@@ -11,33 +11,32 @@ recoverable <- function(simulated)
 
   # Check for pseudo Omega
   if(is.null(simulated$population$Omega_pseudo)){
-
-    # Apply community detection to population graph
-    walktrap <- community.detection(simulated$population$Omega)
-    louvain <- community.consensus(simulated$population$Omega)
-
-    # Check for any NAs
-    if(any(is.na(walktrap)) || any(is.na(louvain))){
-      return(FALSE)
-    }
-
+    Omega <- simulated$population$Omega
   }else{
-
-    # Apply community detection to population graph
-    walktrap <- community.detection(simulated$population$Omega_pseudo)
-    louvain <- community.consensus(simulated$population$Omega_pseudo)
-
-    # Check for any NAs
-    if(any(is.na(walktrap)) || any(is.na(louvain))){
-      return(FALSE)
-    }
-
+    Omega <- simulated$population$Omega_pseudo
   }
+
+  # Estimate memberships
+  walktrap <- community.detection(Omega)
+  louvain <- community.consensus(Omega)
+  prism <- community.prism(Omega)
 
   # Return recoverable
   return(
-    (compare(walktrap, simulated$population$membership, method = "adjusted.rand") == 1) &
-    (compare(louvain, simulated$population$membership, method = "adjusted.rand") == 1)
+    c(
+      walktrap = ifelse(
+        any(is.na(walktrap)), FALSE,
+        abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e06
+      ),
+      louvain = ifelse(
+        any(is.na(louvain)), FALSE,
+        abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e06
+      ),
+      prism = ifelse(
+        any(is.na(prism)), FALSE,
+        abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e06
+      )
+    )
   )
 
 }
@@ -64,7 +63,7 @@ generate_condition <- function(condition)
     )
 
     # Check if base is recoverable
-    if(recoverable(simulated_base)){
+    if(any(recoverable(simulated_base))){
       break
     }
 
@@ -110,7 +109,7 @@ generate_condition <- function(condition)
                 value = value,
                 simulated_error$population_error$fit,
                 max_residual = simulated_error$population_error$max_error,
-                recoverable = recoverable(simulated_error)
+                recoverable(simulated_error)
               )
             )
 
