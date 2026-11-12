@@ -60,11 +60,11 @@ for(i in seq_len(n_conditions)){
       # Combine results
       return(data_condition)
 
-    }, mc.cores = 50, mc.preschedule = FALSE
+    }, mc.cores = 10, mc.preschedule = FALSE
   )
 
   # Save condition
-  save(replicate, file = paste0("./condiitons/condition_", condition_number, ".RData"))
+  save(replicate, file = paste0("./conditions/condition_", condition_number, ".RData"))
 
   # Print update
   cat(paste0("\r Run ", condition_number, " of ", n_conditions, " completed."))

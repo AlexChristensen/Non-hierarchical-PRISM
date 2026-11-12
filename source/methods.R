@@ -800,66 +800,65 @@ obtain_methods <- function(simulated)
   # Get sample size
   N <- dim(simulated$data)[1]
 
-  # Create timing list
-  time_list <- list()
-
   # Estimate correlations
-  time_list$R_time <- system.time(
-    R <- polychoric(simulated$data), gcFirst = FALSE
+  R <- polychoric(simulated$data)
+
+  # EGA
+  ega <- EGA(R, n = N, plot.EGA = FALSE)
+
+  # Initialize unidimensional flag
+  unidimensional <- ega$n.dim == 1
+
+  # Check for flag
+  uni_solution <- rep(1, length(variables))
+
+  ## Walktrap
+  walktrap <- EGAnet:::swiftelse(
+    unidimensional, uni_solution,
+    community.detection(ega$network, algorithm = "walktrap")
   )
 
-  # Hierarchical EGA
-  time_list$network_time <- system.time(
-    network <- EGA(R, n = N, plot.EGA = FALSE)$network,
-    gcFirst = FALSE
+  ## Louvain
+  louvain <- EGAnet:::swiftelse(
+    unidimensional, uni_solution,
+    community.consensus(ega$network)
   )
 
   ## PRISM
-  time_list$prism_time <- system.time(
-    prism <- community.prism(network),
-    gcFirst = FALSE
+  prism <- EGAnet:::swiftelse(
+    unidimensional, uni_solution,
+    community.prism(ega$network)
   )
 
   # Estimate parallel analysis
-  time_list$pa_time <- system.time(
-    pa <- parallel_analysis(simulated$data, corr = "polychoric"),
-    gcFirst = FALSE
-  )
+  pa <- parallel_analysis(simulated$data, corr = "polychoric")
 
   # Estimate Kaiser-Guttman
-  time_list$kaiser_time <- system.time(
-    kaiser <- kaiser_guttman(R = R),
-    gcFirst = FALSE
-  )
+  kaiser <- kaiser_guttman(R = R)
 
   # Estimate empirical Kaiser
-  time_list$ekc_time <- system.time(
-    ekc <- empirical_kaiser(R = R, N = N),
-    gcFirst = FALSE
-  )
+  ekc <- empirical_kaiser(R = R, N = N)
 
   # Estimate comparison data
-  time_list$cd_time <- system.time(
-    cd <- comparison_data(Data = simulated$data),
-    gcFirst = FALSE
-  )
+  cd <- comparison_data(Data = simulated$data)
 
   # Estimate factor forest
-  time_list$ff_time <- system.time(
-    ff <- factor_forest(
-      simulated$data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd
-    ),
-    gcFirst = FALSE
+  ff <- factor_forest(
+    simulated$data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd
   )
 
-  # Return results
-  return(
-    list(
-      prism = prism, pca = pa[["pca"]], paf = pa[["paf"]],
-      pafm = pa[["paf_fa"]], kaiser = kaiser, ekc = ekc, cd = cd,
-      ff = ff
-    )
+  # Obtain results
+  results <- list(
+    walktrap = walktrap, louvain = louvain, prism = prism,
+    pca = pa[["pca"]], paf = pa[["paf"]], pafm = pa[["paf_fa"]],
+    kaiser = kaiser, ekc = ekc, cd = cd, ff = ff
   )
+
+  # Add correlations
+  attributes(results)$R <- R
+
+  # Return results
+  return(results)
 
 }
 
