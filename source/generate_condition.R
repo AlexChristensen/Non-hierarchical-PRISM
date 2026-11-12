@@ -107,6 +107,32 @@ generate_condition <- function(condition)
 
   }
 
+  # Obtain number of variables
+  n_variables <- length(simulated_base$population$membership)
+
+  # Set skew
+  skewness <- psychNetwoRk:::runif_xoshiro(n_variables, min = 0, max = 2)
+
+  # Add skew to condition
+  simulated_error$parameters$skew <- simulated_base$parameters$skew <- skewness
+
+  # Add skew to the data
+  for(v in seq_len(n_variables)){
+
+    # Add skew
+    ## Base
+    simulated_base$data[,v] <- categorize(
+      simulated_base$data[,v], categories = 5, skew_value = skewness[v]
+    )
+
+    ## Error
+    simulated_error$data[,v] <- categorize(
+      simulated_error$data[,v], categories = 5, skew_value = skewness[v]
+    )
+
+  }
+
+
   # Return data
   return(list(no_error = simulated_base, error = simulated_error))
 

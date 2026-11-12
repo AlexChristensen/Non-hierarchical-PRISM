@@ -28,25 +28,30 @@ polychoric <- cmpfun(polychoric)
 
 # Parallel Analysis
 #
-# `type` selects which variants are computed (default: the first two):
-#   "pca" = principal components vs. mean eigenvalues of shuffled data
-#   "paf" = principal axis factoring (SMC communalities) vs. mean eigenvalues
-#           of shuffled data
-#   "fa"  = common factor model (minres) vs. the `quant` quantile of eigenvalues
-#           from random normal data, as in `psych::fa.parallel(fa = "fa")`.
-#           This is the variant used by `factor_forest`. Its reference only
-#           depends on N and p, so (unlike `psych::fa.parallel`) no correlations
-#           of resampled data are computed, which makes it much faster
+# `type` selects which variants are computed (default: all three):
+#   "pca"    = principal components vs. mean eigenvalues of shuffled data
+#   "paf"    = principal axis factoring (SMC communalities) vs. mean
+#              eigenvalues of shuffled data
+#   "paf_fa" = common factor model (minres) vs. the `quant` quantile of
+#              eigenvalues from random normal data, as in
+#              `psych::fa.parallel(fa = "fa")`. This is the variant used by
+#              `factor_forest`. Its reference only depends on N and p, so
+#              (unlike `psych::fa.parallel`) no correlations of resampled data
+#              are computed, which makes it much faster. Settings match the
+#              original `fa.parallel(fa = "fa", cor = "poly")` call: random
+#              normal data (psych's default `sim = TRUE`; shuffled variables
+#              are only used for `nfact` when `sim = FALSE`), 20 iterations,
+#              95th percentile, one-factor minres eigenvalues
 # `R` is an optional, already computed empirical correlation matrix
 # The empirical eigenvalues of each requested type are attached as the
 # attribute "eigenvalues"
 parallel_analysis <- function(
-    data, corr, n.iter = 20, quant = 0.95, R = NULL, type = c("pca", "paf")
+    data, corr, n.iter = 20, quant = 0.95, R = NULL, type = c("pca", "paf", "paf_fa")
 )
 {
 
   # Check for type
-  type <- match.arg(type, choices = c("pca", "paf", "fa"), several.ok = TRUE)
+  type <- match.arg(type, choices = c("pca", "paf", "paf_fa"), several.ok = TRUE)
 
   # Set up correlation function
   corr_FUN <- switch(
@@ -153,7 +158,7 @@ parallel_analysis <- function(
   }
 
   # Common factor model (minres) vs. random normal data (as `psych::fa.parallel`)
-  if("fa" %in% type){
+  if("paf_fa" %in% type){
 
     # Obtain empirical common factor eigenvalues
     FA_empirical <- suppressWarnings(suppressMessages(
@@ -187,8 +192,8 @@ parallel_analysis <- function(
     FA_quantile <- apply(FA_random, 1, quantile, probs = quant)
 
     # Store results
-    counts$fa <- count_dimensions(FA_empirical > FA_quantile, variables)
-    eigenvalues$fa <- FA_empirical
+    counts$paf_fa <- count_dimensions(FA_empirical > FA_quantile, variables)
+    eigenvalues$paf_fa <- FA_empirical
 
   }
 
@@ -449,7 +454,7 @@ empirical_kaiser <- cmpfun(empirical_kaiser)
 # Alpha = significance level for adding a factor; Spearman = rank correlations;
 # use = handling of missing values for the observed correlations
 comparison_data <- function(
-    Data, F.Max, N.Pop = 10000, N.Samples = 500, Alpha = 0.30,
+    Data, F.Max = 8, N.Pop = 10000, N.Samples = 500, Alpha = 0.30,
     Spearman = FALSE, use = "pairwise.complete.obs"
 )
 {
@@ -507,3 +512,356 @@ comparison_data <- function(
 
 # Compile
 comparison_data <- cmpfun(comparison_data)
+
+#### Factor Forest ####
+#
+# Estimates the number of dimensions (factors) with the pre-trained xgboost
+# model of Goretzko & Buhner (2020; https://osf.io/mvrau/), applied to ordinal
+# data as in Goretzko & Buhner (2022; Applied Psychological Measurement).
+#
+# Feature extraction follows `analyze()` in `factor_forest/Evaluation.R` (the
+# authors' own evaluation code for ordinal data). The model's 184 features are:
+#   N, p, 22 summary features of the correlation matrix and its eigenvalues,
+#   parallel analysis, empirical Kaiser criterion, comparison data approach,
+#   and the first 80 eigenvalues of the correlation matrix and of the
+#   reduced correlation matrix (FA).
+#
+# For ordinal data (the default), polychoric correlations replace Pearson
+# correlations for the features, parallel analysis, and EKC. The comparison
+# data approach runs on the raw data with Pearson correlations (as in
+# `Evaluation.R`).
+#
+# The model is `factor_forest/tunedxgb.json`, a one-time conversion of
+# `tunedxgb.rds` that current xgboost versions can read (see
+# `factor_forest/convert_model.md`).
+#
+# Usage (inside `obtain_methods()`, re-using results that are already estimated):
+#   factor_forest(simulated$data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd)
+# Anything not supplied is computed internally, so `factor_forest(data)` also works.
+
+# Folder this script was sourced from (NULL when it cannot be determined)
+.methods_directory <- tryCatch(dirname(sys.frame(1)$ofile), error = function(e){NULL})
+
+# Cache so the model is only read once per R process
+.factor_forest_cache <- new.env(parent = emptyenv())
+
+# Load (and cache) the pre-trained model
+#
+# Searches (in order): `options(factor_forest.dir = "<folder>")`, the folder
+# next to this script, and the project-root convention `./source/factor_forest`
+factor_forest_model <- function(path = NULL)
+{
+
+  # Locate the model
+  if(is.null(path)){
+
+    # Candidate folders
+    candidates <- file.path(
+      c(
+        getOption("factor_forest.dir"),
+        if(!is.null(.methods_directory)){file.path(.methods_directory, "factor_forest")},
+        "./source/factor_forest", "./factor_forest", "."
+      ),
+      "tunedxgb.json"
+    )
+
+    # Use the first that exists
+    path <- Filter(file.exists, candidates)[1]
+    if(is.na(path)){
+      stop(
+        "Could not find `tunedxgb.json`. Set `options(factor_forest.dir = \"<folder>\")`",
+        call. = FALSE
+      )
+    }
+
+  }
+
+  # Read once
+  if(is.null(.factor_forest_cache[[path]])){
+    .factor_forest_cache[[path]] <- xgboost::xgb.load(path)
+  }
+
+  # Return model
+  return(.factor_forest_cache[[path]])
+
+}
+
+# Number of eigenvalues the model uses as features
+.factor_forest_eigenvalues <- 80L
+
+# Pad (with -1000, as in training) or truncate to the model's expected length
+.factor_forest_pad <- function(x, length = .factor_forest_eigenvalues)
+{
+
+  # Initialize padded
+  padded <- rep(-1000, length)
+
+  # Fill
+  n <- min(base::length(x), length)
+  padded[seq_len(n)] <- x[seq_len(n)]
+
+  # Return padded
+  return(padded)
+
+}
+
+# Check that a supplied result is a single number
+.factor_forest_check <- function(x, name)
+{
+
+  # Stop when not a single (non-missing) number
+  if(!is.null(x) && !(is.numeric(x) && length(x) == 1 && !is.na(x))){
+    stop(
+      "`", name, "` must be a single number (the result of the corresponding method)",
+      call. = FALSE
+    )
+  }
+
+}
+
+# Compute the model's features (one-row data frame)
+#
+# `data`: N x p matrix or data frame of item responses
+# `R`: optional p x p correlation matrix (e.g., polychoric already computed);
+#      computed from `data` when NULL
+# `pa`: optional result of `parallel_analysis()`; re-used only when it includes
+#       the "paf_fa" variant (the default `type` includes it), otherwise that
+#       variant is computed
+# `kaiser`, `ekc`, `cd`: optional results of `kaiser_guttman()`,
+#       `empirical_kaiser()`, and `comparison_data()`; computed when NULL
+#       (`cd` is by far the most expensive and is the most useful to supply)
+# `cor`: "poly" (ordinal data; default) or "pearson" (continuous data)
+factor_forest_features <- function(
+    data, R = NULL, pa = NULL, kaiser = NULL, ekc = NULL, cd = NULL,
+    cor = c("poly", "pearson"), use = "pairwise.complete.obs", F.Max = 8
+)
+{
+
+  # Check supplied results
+  .factor_forest_check(kaiser, "kaiser")
+  .factor_forest_check(ekc, "ekc")
+  .factor_forest_check(cd, "cd")
+
+  # Check for correlation type
+  cor <- match.arg(cor)
+
+  # Ensure numeric matrix
+  data <- as.matrix(data)
+
+  # Obtain dimensions
+  N <- nrow(data)
+  p <- ncol(data)
+
+  # Correlation matrix
+  if(is.null(R)){
+    dat_cor <- switch(
+      cor,
+      "poly" = psych::polychoric(data)$rho,
+      "pearson" = stats::cor(data, use = use)
+    )
+  }else{
+    dat_cor <- as.matrix(R)
+  }
+
+  # Eigenvalues
+  eigval <- eigen(dat_cor, symmetric = TRUE)$values
+  vareig <- cumsum(eigval) / p
+
+  # Empirical Kaiser criterion
+  if(is.null(ekc)){
+    ekc <- empirical_kaiser(N = N, eigenvalues = eigval)
+  }
+
+  # Eigenvalue based features (including the Kaiser-Guttman rule)
+  if(is.null(kaiser)){
+    kaiser <- kaiser_guttman(eigenvalues = eigval)
+  }
+  eiggreater1 <- kaiser
+  releig1 <- eigval[1] / p
+  releig2 <- sum(eigval[1:2]) / p
+  releig3 <- sum(eigval[1:3]) / p
+  eiggreater07 <- sum(eigval > 0.7)
+  sdeigval <- stats::sd(eigval)
+  var50 <- min(which(vareig > 0.50))
+  var75 <- min(which(vareig > 0.75))
+
+  # Matrix norm features
+  onenorm <- norm(dat_cor, "O")
+  frobnorm <- norm(dat_cor, "F")
+  maxnorm <- norm(dat_cor - diag(p), "M")
+  avgcor <- sum(abs(dat_cor - diag(p))) / (p * (p - 1))
+  specnorm <- sqrt(eigen(crossprod(dat_cor), symmetric = TRUE)$values[1])
+
+  smlcor <- sum(dat_cor <= 0.1)
+  avgcom <- mean(suppressWarnings(psych::smc(dat_cor)))
+  det <- det(dat_cor)
+
+  # "Inequality" features
+  #
+  # NOTE: the model was trained with these computed on `lower.tri(dat_cor)`
+  # (a logical matrix) rather than on the correlations themselves (see
+  # `Evaluation.R`). This is kept on purpose: features must be computed exactly
+  # as they were in training for the pre-trained model's predictions to be valid.
+  KMO <- suppressWarnings(psych::KMO(dat_cor)$MSA)
+  Gini <- ineq::ineq(lower.tri(dat_cor), type = "Gini")
+  Kolm <- ineq::ineq(lower.tri(dat_cor), type = "Kolm")
+
+  # Parallel analysis (common factor model, as in training)
+  #
+  # A supplied result is only usable if it includes the "paf_fa" variant
+  if(is.null(pa) || !("paf_fa" %in% names(pa))){
+    pa <- parallel_analysis(
+      data, corr = switch(cor, "poly" = "polychoric", "pearson" = "pearson"),
+      R = dat_cor, type = "paf_fa"
+    )
+  }
+  pa_solution <- pa[["paf_fa"]]
+  fa_eigval <- attr(pa, "eigenvalues")$paf_fa
+  if(length(fa_eigval) != p){
+    stop(
+      "`pa` has ", length(fa_eigval), " factor analysis eigenvalues but the data ",
+      "have ", p, " variables", call. = FALSE
+    )
+  }
+
+  # Pad (or truncate) eigenvalues to the model's expected length
+  eigval <- .factor_forest_pad(eigval)
+  fa_eigval <- .factor_forest_pad(fa_eigval)
+  names(eigval) <- paste0("eigval", seq_along(eigval))
+  names(fa_eigval) <- paste0("fa_eigval", seq_along(fa_eigval))
+
+  # Comparison data approach
+  if(is.null(cd)){
+    cd <- comparison_data(Data = data, F.Max = F.Max, use = use)
+  }
+
+  # Return features (column order is the order the model was trained on)
+  return(
+    cbind(
+      data.frame(
+        N = N, p = p, eiggreater1, releig1, releig2, releig3, eiggreater07,
+        sdeigval, var50, var75, onenorm, frobnorm, maxnorm, avgcor, specnorm,
+        smlcor, avgcom, det, KMO, Gini, Kolm, pa_solution, ekc, cd
+      ),
+      t(eigval), t(fa_eigval)
+    )
+  )
+
+}
+
+# Compile
+factor_forest_features <- cmpfun(factor_forest_features)
+
+# Estimate the number of factors
+#
+# Returns an integer between 1 and 8 (the model's class labels)
+#
+# Arguments `R`, `pa`, `kaiser`, `ekc`, and `cd` are optional, already estimated
+# results (see `factor_forest_features()`); `model` is a pre-trained booster
+factor_forest <- function(
+    data, R = NULL, pa = NULL, kaiser = NULL, ekc = NULL, cd = NULL,
+    model = NULL, cor = c("poly", "pearson"),
+    use = "pairwise.complete.obs", F.Max = 8
+)
+{
+
+  # Obtain (cached) pre-trained model
+  if(is.null(model)){
+    model <- factor_forest_model()
+  }
+
+  # Compute features
+  features <- factor_forest_features(
+    data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd,
+    cor = cor, use = use, F.Max = F.Max
+  )
+
+  # Predict class probabilities (uses the best early-stopping iteration)
+  probabilities <- matrix(
+    suppressWarnings(predict(model, as.matrix(features))),
+    nrow = 1
+  )
+
+  # Return number of factors (class labels are 1, ..., 8)
+  return(max.col(probabilities, ties.method = "first"))
+
+}
+
+# Compile
+factor_forest <- cmpfun(factor_forest)
+
+# Obtain methods
+obtain_methods <- function(simulated)
+{
+
+  # Get variable names
+  variables <- colnames(simulated$data)
+
+  # Get sample size
+  N <- dim(simulated$data)[1]
+
+  # Create timing list
+  time_list <- list()
+
+  # Estimate correlations
+  time_list$R_time <- system.time(
+    R <- polychoric(simulated$data), gcFirst = FALSE
+  )
+
+  # Hierarchical EGA
+  time_list$network_time <- system.time(
+    network <- EGA(R, n = N, plot.EGA = FALSE)$network,
+    gcFirst = FALSE
+  )
+
+  ## PRISM
+  time_list$prism_time <- system.time(
+    prism <- community.prism(network),
+    gcFirst = FALSE
+  )
+
+  # Estimate parallel analysis
+  time_list$pa_time <- system.time(
+    pa <- parallel_analysis(simulated$data, corr = "polychoric"),
+    gcFirst = FALSE
+  )
+
+  # Estimate Kaiser-Guttman
+  time_list$kaiser_time <- system.time(
+    kaiser <- kaiser_guttman(R = R),
+    gcFirst = FALSE
+  )
+
+  # Estimate empirical Kaiser
+  time_list$ekc_time <- system.time(
+    ekc <- empirical_kaiser(R = R, N = N),
+    gcFirst = FALSE
+  )
+
+  # Estimate comparison data
+  time_list$cd_time <- system.time(
+    cd <- comparison_data(Data = simulated$data),
+    gcFirst = FALSE
+  )
+
+  # Estimate factor forest
+  time_list$ff_time <- system.time(
+    ff <- factor_forest(
+      simulated$data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd
+    ),
+    gcFirst = FALSE
+  )
+
+  # Return results
+  return(
+    list(
+      prism = prism, pca = pa[["pca"]], paf = pa[["paf"]],
+      pafm = pa[["paf_fa"]], kaiser = kaiser, ekc = ekc, cd = cd,
+      ff = ff
+    )
+  )
+
+}
+
+# Compile
+obtain_methods <- cmpfun(obtain_methods)
