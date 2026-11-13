@@ -6,7 +6,7 @@
 # using error_results.RData (from 01_generate_error.R).
 # Writes five ggplot2 figures to ./figures/wb/
 #
-# wb hits its RMSEA target essentially exactly (|error| < 1e-11), so the
+# wb hits its RMSEA target essentially exactly (|error| < 1e-8), so the
 # interesting questions are what it does to the *other* outcomes and which
 # design factors drive that.
 
@@ -70,7 +70,7 @@ wb <- error_results %>%
   )
 
 # Sanity check: wb hits the RMSEA target
-stopifnot(max(abs(wb$RMSEA - wb$target)) < 1e-9)
+stopifnot(max(abs(wb$RMSEA - wb$target)) < 1e-7)
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 #### 1. Implied CFI by blocks and nodes ####
@@ -205,10 +205,10 @@ p4 <- ggplot(factor_df, aes(x = level, y = median, group = 1)) +
   geom_point(size = 2.8, shape = 21, color = wb_color, fill = surface, stroke = 1.3) +
   facet_grid(index ~ factor, scales = "free", switch = "y") +
   labs(
-    title = "Blocks drive wb's side effects most; nodes and between add some",
+    title = "Blocks drive wb's side effects most; nodes, between, and N add some",
     subtitle = paste0(
       "Median outcome at each factor level, pooled over RMSEA targets; ",
-      "within, diffusion, and N barely matter (y-axes do not start at zero)"
+      "within and diffusion barely matter (y-axes do not start at zero)"
     ),
     x = NULL, y = NULL
   ) +

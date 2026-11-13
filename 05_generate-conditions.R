@@ -60,7 +60,7 @@ for(i in seq_len(n_conditions)){
       # Combine results
       return(data_condition)
 
-    }, mc.cores = 10, mc.preschedule = FALSE
+    }, mc.cores = 50, mc.preschedule = FALSE
   )
 
   # Save condition

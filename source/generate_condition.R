@@ -51,12 +51,11 @@ convergence <- function(simulated)
 {
 
   # Set up logicals
-  cfi <- simulated$population_error$fit[["CFI"]] > 0.95
-  rmsea <- abs(simulated$population_error$fit[["RMSEA"]] - 0.02) < 1
+  cfi <- abs(simulated$population_error$fit[["CFI"]] - 0.97) < 0.01
   max_residual <- simulated$population_error$max_error < 0.10
 
   # Return convergence
-  return(all(cfi, rmsea, max_residual))
+  return(all(cfi, max_residual))
 
 }
 
@@ -93,11 +92,8 @@ generate_condition <- function(condition)
 
     # Obtain error data
     simulated_error <- psychNetwoRk:::silent_call(add_population_error(
-      ggm_object = simulated_base, method = "wb", metric = "rmsea",
-      fit_value = switch(
-        as.character(simulated_base$parameters$blocks),
-        "2" = 0.04, "4" = 0.03, "8" = 0.02
-      )
+      ggm_object = simulated_base, method = "tkl", metric = "cfi",
+      fit_value = 0.97
     ))
 
     # Check if base is recoverable

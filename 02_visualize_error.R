@@ -169,10 +169,10 @@ p3 <- ggplot(cfi_long, aes(x = target, y = estimate, color = method, fill = meth
   scale_color_manual(values = method_colors, labels = method_labels) +
   scale_fill_manual(values = method_colors, labels = method_labels) +
   labs(
-    title = "At the same CFI, cb and tkl differ mainly in the RMSEA they imply",
+    title = "At the same CFI, cb and tkl differ mainly in the SRMR they imply",
     subtitle = paste0(
       "Distribution of other fit indices across CFI targets (outliers hidden); ",
-      "TLI and SRMR are nearly identical"
+      "TLI and RMSEA are nearly identical"
     ),
     x = "Target CFI", y = "Achieved value"
   ) +
