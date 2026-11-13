@@ -2,9 +2,6 @@
 #### Generate Error for Conditions ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
-# Provide password
-system("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'")
-
 # Make sure environment has single threaded applications
 Sys.setenv(BLIS_NUM_THREADS = "1")
 Sys.setenv(AOCL_NUM_THREADS = "1")
@@ -123,9 +120,6 @@ for(i in which(!completed)){
   # Remove replicate
   rm(replicate_df)
   gc(verbose = FALSE)
-  if((i %% 12) == 0){
-    system("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'")
-  }
 
   # Print update
   cat(paste0("\r Run ", condition_number, " of ", n_conditions, " completed."))
