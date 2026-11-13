@@ -9,6 +9,11 @@ library(psych); library(GPArotation); library(igraph); library(compiler)
 efa <- function(R, n.obs, nfactors, randomStarts = 100L, ...)
 {
 
+  # Check for number of factors
+  if(nfactors == 0){
+    return(NA)
+  }
+
   # Data dimensions
   dimensions <- dim(data)
 
@@ -46,8 +51,28 @@ efa <- function(R, n.obs, nfactors, randomStarts = 100L, ...)
 
 }
 
-# Compile
+# Compile function
 efa <- cmpfun(efa)
+
+# Membership comparison
+membership_compare <- function(empirical, true)
+{
+
+  # Check for missing
+  missing <- is.na(empirical)
+
+  # Check for all missing
+  if(all(missing)){
+    return(NA)
+  }
+
+  # Return results
+  return(compare(empirical[!missing], true[!missing], method = "adjusted.rand"))
+
+}
+
+# Compile function
+membership_compare <- cmpfun(membership_compare)
 
 # Obtain results
 obtain_results <- function(simulated, condition_df)
@@ -83,10 +108,10 @@ obtain_results <- function(simulated, condition_df)
       dimensions
     ),
     ARI = c(
-      compare(result$walktrap, simulated$population$membership, method = "adjusted.rand"),
-      compare(result$louvain, simulated$population$membership, method = "adjusted.rand"),
-      compare(result$prism, simulated$population$membership, method = "adjusted.rand"),
-      EGAnet:::nvapply(efa_memberships, compare, simulated$population$membership, method = "adjusted.rand")[
+      membership_compare(result$walktrap, simulated$population$membership),
+      membership_compare(result$louvain, simulated$population$membership),
+      membership_compare(result$prism, simulated$population$membership),
+      EGAnet:::nvapply(efa_memberships, membership_compare, simulated$population$membership)[
         match(dimensions, unique_dimensions)
       ]
     )

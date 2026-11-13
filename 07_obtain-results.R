@@ -58,11 +58,11 @@ for(i in seq_len(n_conditions)){
     replicate, function(x){
 
       # Obtain result for no error
-      no_error_results <- obtain_results(x$no_error, condition_df)
+      no_error_results <- EGAnet:::silent_call(obtain_results(x$no_error, condition_df))
       no_error_results$ERROR <- FALSE
 
       # Obtain result for error
-      error_results <- obtain_results(x$error, condition_df)
+      error_results <- EGAnet:::silent_call(obtain_results(x$error, condition_df))
       error_results$ERROR <- TRUE
 
       # Combine results
