@@ -26,15 +26,15 @@ recoverable <- function(simulated)
     c(
       walktrap = ifelse(
         any(is.na(walktrap)), FALSE,
-        abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e06
+        abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
       ),
       louvain = ifelse(
         any(is.na(louvain)), FALSE,
-        abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e06
+        abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
       ),
       prism = ifelse(
         any(is.na(prism)), FALSE,
-        abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e06
+        abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
       )
     )
   )

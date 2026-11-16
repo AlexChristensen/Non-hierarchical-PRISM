@@ -2,6 +2,14 @@
 #### Generate Conditions ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
+# Provide password once, then keep sudo alive for as long as this R process lives
+system("sudo -v")
+system(sprintf(
+  "( while kill -0 %d 2>/dev/null; do sudo -n -v; sleep 60; done ) >/dev/null 2>&1 &",
+  Sys.getpid()))
+system("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'")
+
+
 # Make sure environment has single threaded applications
 Sys.setenv(BLIS_NUM_THREADS = "1")
 Sys.setenv(AOCL_NUM_THREADS = "1")
@@ -65,6 +73,13 @@ for(i in seq_len(n_conditions)){
 
   # Save condition
   save(replicate, file = paste0("./conditions/condition_", condition_number, ".RData"))
+
+  # Remove replicate
+  rm(replicate)
+  gc(verbose = FALSE)
+  if((i %% 12) == 0){
+    system("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'")
+  }
 
   # Print update
   cat(paste0("\r Run ", condition_number, " of ", n_conditions, " completed."))
