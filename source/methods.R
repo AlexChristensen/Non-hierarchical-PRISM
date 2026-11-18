@@ -791,17 +791,17 @@ factor_forest <- function(
 factor_forest <- cmpfun(factor_forest)
 
 # Obtain methods
-obtain_methods <- function(simulated)
+obtain_methods <- function(data)
 {
 
   # Get variable names
-  variables <- colnames(simulated$data)
+  variables <- colnames(data)
 
   # Get sample size
-  N <- dim(simulated$data)[1]
+  N <- dim(data)[1]
 
   # Estimate correlations
-  R <- polychoric(simulated$data)
+  R <- polychoric(data)
 
   # EGA
   ega <- EGA(R, n = N, plot.EGA = FALSE)
@@ -831,7 +831,7 @@ obtain_methods <- function(simulated)
   )
 
   # Estimate parallel analysis
-  pa <- parallel_analysis(simulated$data, corr = "polychoric")
+  pa <- parallel_analysis(data, corr = "polychoric")
 
   # Estimate Kaiser-Guttman
   kaiser <- kaiser_guttman(R = R)
@@ -840,11 +840,11 @@ obtain_methods <- function(simulated)
   ekc <- empirical_kaiser(R = R, N = N)
 
   # Estimate comparison data
-  cd <- comparison_data(Data = simulated$data)
+  cd <- comparison_data(Data = data)
 
   # Estimate factor forest
   ff <- factor_forest(
-    simulated$data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd
+    data, R = R, pa = pa, kaiser = kaiser, ekc = ekc, cd = cd
   )
 
   # Obtain results

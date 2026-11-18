@@ -3,7 +3,8 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
 # Load packages
-library(psychNetwoRk); library(EGAnet); library(igraph); library(compiler)
+library(psychNetwoRk); library(EGAnet); library(igraph)
+library(mvtnorm); library(compiler)
 
 # Recoverable
 recoverable <- function(simulated)
@@ -80,7 +81,7 @@ generate_condition <- function(condition)
       simulated_base <- try(simulate_sbm(
         nodes = condition$NODES, blocks = condition$BLOCKS,
         density_matrix = DM, diffusion = condition$DIFFUSION,
-        sample_size = condition$N
+        sample_size = 1
       ), silent = TRUE)
 
       # Check if base is recoverable
@@ -109,28 +110,40 @@ generate_condition <- function(condition)
   # Set skew
   skewness <- psychNetwoRk:::runif_xoshiro(n_variables, min = 0, max = 2)
 
-  # Add skew to condition
-  simulated_error$parameters$skew <- simulated_base$parameters$skew <- skewness
+  # Obtain Cholesky decomposition
+  cholesky_base <- chol(simulated_base$population$R)
+  cholesky_error <- chol(simulated_error$population$R)
 
-  # Add skew to the data
-  for(v in seq_len(n_variables)){
+  # Obtain means and Sigma
+  means <- rep(0, n_variables); Sigma <- diag(n_variables)
 
-    # Add skew
-    ## Base
-    simulated_base$data[,v] <- categorize(
-      simulated_base$data[,v], categories = 5, skew_value = skewness[v]
-    )
+  # Generate samples
+  samples <- lapply(c(500, 1000, 2500, 5000), function(N){
 
-    ## Error
-    simulated_error$data[,v] <- categorize(
-      simulated_error$data[,v], categories = 5, skew_value = skewness[v]
-    )
+    # Generate data
+    data <- rmvnorm(n = N, mean = means, sigma = Sigma)
 
-  }
+    # Create correlated data
+    data_base <- data %*% cholesky_base
+    data_error <- data %*% cholesky_error
+
+    # Add skew to the data
+    for(v in seq_len(n_variables)){
+
+      # Add skew
+      data_base[,v] <- categorize(data_base[,v], categories = 5, skew_value = skewness[v])
+      data_error[,v] <- categorize(data_error[,v], categories = 5, skew_value = skewness[v])
+
+    }
+
+    # Return samples
+    return(list(base = data_base, error = data_error))
+
+  })
 
 
   # Return data
-  return(list(no_error = simulated_base, error = simulated_error))
+  return(samples)
 
 }
 

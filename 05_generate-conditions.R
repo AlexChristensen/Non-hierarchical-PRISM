@@ -32,8 +32,7 @@ conditions <- expand.grid(
   NODES = c(4, 8, 12),
   WITHIN = c(0.85, 0.95),
   BETWEEN = c(0.10, 0.20),
-  DIFFUSION = c(0.10, 0.20),
-  N = c(500, 1000, 2500, 5000)
+  DIFFUSION = c(0.10, 0.20)
 )
 
 # Number of conditions

@@ -75,11 +75,14 @@ membership_compare <- function(empirical, true)
 membership_compare <- cmpfun(membership_compare)
 
 # Obtain results
-obtain_results <- function(simulated, condition_df)
+obtain_results <- function(data, membership, condition_df)
 {
 
+  # Obtain sample size
+  N <- dim(data)[1]
+
   # Obtain dimensionality
-  result <- obtain_methods(simulated)
+  result <- obtain_methods(data)
 
   # Obtain dimensions
   dimensions <- unlist(result[-c(1:3)])
@@ -92,7 +95,7 @@ obtain_results <- function(simulated, condition_df)
     unique_dimensions, function(u){
       efa(
         R = attributes(result)$R,
-        n.obs = simulated$parameters$sample_size,
+        n.obs = N,
         nfactors = u
       )
     }
@@ -101,6 +104,7 @@ obtain_results <- function(simulated, condition_df)
   # Set up result
   combined_result <- data.frame(
     METHOD = names(result),
+    N = N,
     NDIM = c(
       EGAnet:::unique_length(result$walktrap),
       EGAnet:::unique_length(result$louvain),
@@ -108,10 +112,10 @@ obtain_results <- function(simulated, condition_df)
       dimensions
     ),
     ARI = c(
-      membership_compare(result$walktrap, simulated$population$membership),
-      membership_compare(result$louvain, simulated$population$membership),
-      membership_compare(result$prism, simulated$population$membership),
-      EGAnet:::nvapply(efa_memberships, membership_compare, simulated$population$membership)[
+      membership_compare(result$walktrap, membership),
+      membership_compare(result$louvain, membership),
+      membership_compare(result$prism, membership),
+      EGAnet:::nvapply(efa_memberships, membership_compare, membership)[
         match(dimensions, unique_dimensions)
       ]
     )

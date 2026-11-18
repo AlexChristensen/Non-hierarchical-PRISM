@@ -24,9 +24,8 @@ conditions <- expand.grid(
   BLOCKS = c(2, 4, 8),
   NODES = c(4, 8, 12),
   WITHIN = c(0.85, 0.95),
-  BETWEEN = c(0.20, 0.40),
-  DIFFUSION = c(0.30, 0.50),
-  N = c(500, 1000, 2500, 5000)
+  BETWEEN = c(0.10, 0.20),
+  DIFFUSION = c(0.10, 0.20)
 )
 
 # Number of conditions
@@ -53,20 +52,35 @@ for(i in seq_len(n_conditions)){
   # Load condition
   load(file = paste0("./conditions/condition_", condition_number, ".RData"))
 
+  # Set up membership
+  membership <- rep(seq_len(condition$BLOCKS), each = condition$NODES)
+
   # Generate replicate results
   replicate_results <- mclapply(
     replicate, function(x){
 
-      # Obtain result for no error
-      no_error_results <- EGAnet:::silent_call(obtain_results(x$no_error, condition_df))
-      no_error_results$ERROR <- FALSE
+      # Obtain base results
+      base_results <- do.call(
+        rbind.data.frame, lapply(x, function(y){
+          obtain_results(y$base, membership, condition_df)
+        })
+      )
 
-      # Obtain result for error
-      error_results <- EGAnet:::silent_call(obtain_results(x$error, condition_df))
+      # Add error
+      base_results$ERROR <- FALSE
+
+      # Obtain error results
+      error_results <- do.call(
+        rbind.data.frame, lapply(x, function(y){
+          obtain_results(y$error, membership, condition_df)
+        })
+      )
+
+      # Add error
       error_results$ERROR <- TRUE
 
       # Combine results
-      return(rbind.data.frame(no_error_results, error_results))
+      return(rbind.data.frame(base_results, error_results))
 
     }, mc.cores = 50, mc.preschedule = FALSE
   )
