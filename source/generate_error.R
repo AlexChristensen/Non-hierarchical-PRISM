@@ -52,20 +52,25 @@ generate_condition <- function(condition)
   DM <- matrix(condition$BETWEEN, nrow = condition$BLOCKS, ncol = condition$BLOCKS)
   diag(DM) <- condition$WITHIN
 
+  count <- 0
+
   # Generate until recoverable
   while(TRUE){
 
     # Generate data
-    simulated_base <- simulate_sbm(
+    simulated_base <- try(simulate_sbm(
       nodes = condition$NODES, blocks = condition$BLOCKS,
       density_matrix = DM, diffusion = condition$DIFFUSION,
-      sample_size = condition$N
-    )
+      sample_size = 1, negative_proportion = 0
+    ), silent = TRUE)
 
     # Check if base is recoverable
-    if(any(recoverable(simulated_base))){
+    if(!is(simulated_base, "try-error") && any(recoverable(simulated_base))){
       break
     }
+
+    # Increase count
+    count <- count + 1
 
   }
 
@@ -109,7 +114,8 @@ generate_condition <- function(condition)
                 value = value,
                 simulated_error$population_error$fit,
                 max_residual = simulated_error$population_error$max_error,
-                recoverable(simulated_error)
+                recoverable(simulated_error),
+                regenerate = count
               )
             )
 

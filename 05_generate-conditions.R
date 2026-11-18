@@ -31,8 +31,8 @@ conditions <- expand.grid(
   BLOCKS = c(2, 4, 8),
   NODES = c(4, 8, 12),
   WITHIN = c(0.85, 0.95),
-  BETWEEN = c(0.20, 0.40),
-  DIFFUSION = c(0.30, 0.50),
+  BETWEEN = c(0.10, 0.20),
+  DIFFUSION = c(0.10, 0.20),
   N = c(500, 1000, 2500, 5000)
 )
 

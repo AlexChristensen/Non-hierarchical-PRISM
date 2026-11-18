@@ -30,9 +30,8 @@ conditions <- expand.grid(
   BLOCKS = c(2, 4, 8),
   NODES = c(4, 8, 12),
   WITHIN = c(0.85, 0.95),
-  BETWEEN = c(0.20, 0.40),
-  DIFFUSION = c(0.30, 0.50),
-  N = c(500, 1000, 2500, 5000)
+  BETWEEN = c(0.10, 0.20),
+  DIFFUSION = c(0.10, 0.20)
 )
 
 # Number of conditions
@@ -42,47 +41,8 @@ n_digits <- latentFactoR:::digits(n_conditions) - 1
 # Initialize results
 results <- vector("list", n_conditions)
 
-# Path to the saved file for a condition
-condition_path <- function(i){
-  paste0(
-    "./error/condition_",
-    latentFactoR:::format_integer(i, n_digits), ".RData"
-  )
-}
-
-# Check whether a condition was already completed
-# (file must exist AND load cleanly with a non-empty data frame)
-condition_completed <- function(i){
-
-  # Get file
-  file <- condition_path(i)
-
-  # No file means not completed
-  if(!file.exists(file)){
-    return(FALSE)
-  }
-
-  # Attempt to load (corrupt or partial files return FALSE)
-  tryCatch(
-    {
-      load_env <- new.env()
-      load(file, envir = load_env)
-      is.data.frame(load_env$replicate_df) && nrow(load_env$replicate_df) > 0
-    },
-    error = function(e){FALSE}
-  )
-
-}
-
-# Determine which conditions remain (allows restarting where it left off)
-completed <- vapply(seq_len(n_conditions), condition_completed, logical(1))
-cat(paste0(
-  " Found ", sum(completed), " of ", n_conditions, " conditions completed; ",
-  "resuming with ", sum(!completed), " remaining.\n"
-))
-
 # Loop over results
-for(i in which(!completed)){
+for(i in seq_len(n_conditions)){
 
   # Obtain condition
   condition <- conditions[i,]
@@ -98,19 +58,7 @@ for(i in which(!completed)){
   # Generate replicate results
   replicate <- mclapply(
     seq_len(100), function(j){
-
-      # Regenerate with error
-      data_condition <- list()
-      class(data_condition) <- "try-error"
-
-      # Loop until good condition
-      while(is(data_condition, "try-error")){
-        data_condition <- try(generate_condition(condition), silent = TRUE)
-      }
-
-      # Combine results
-      return(cbind.data.frame(condition_df, data_condition))
-
+      return(cbind.data.frame(condition_df, generate_condition(condition)))
     }, mc.cores = 50, mc.preschedule = FALSE
   )
 
@@ -118,11 +66,8 @@ for(i in which(!completed)){
   replicate_df <- do.call(rbind.data.frame, replicate)
   rm(replicate)
 
-  # Save result (write to hidden temporary file, then rename so that
-  # stopping mid-save never leaves a partial condition file behind)
-  temporary_file <- paste0("./error/.condition_", condition_number, ".tmp")
-  save(replicate_df, file = temporary_file)
-  file.rename(temporary_file, condition_path(i))
+  # Save result
+  save(replicate_df, file = paste0("./error/condition_", condition_number, ".RData"))
 
   # Remove replicate
   rm(replicate_df)

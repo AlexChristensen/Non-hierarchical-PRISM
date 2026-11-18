@@ -73,31 +73,31 @@ generate_condition <- function(condition)
   # Generate until recoverable
   while(TRUE){
 
-    # Generate data
-    simulated_base <- psychNetwoRk:::silent_call(simulate_sbm(
-      nodes = condition$NODES, blocks = condition$BLOCKS,
-      density_matrix = DM, diffusion = condition$DIFFUSION,
-      sample_size = condition$N
-    ))
+    # Generate until recoverable
+    while(TRUE){
 
-    # Check if base is recoverable
-    if(recoverable(simulated_base)){
-      break
+      # Generate data
+      simulated_base <- try(simulate_sbm(
+        nodes = condition$NODES, blocks = condition$BLOCKS,
+        density_matrix = DM, diffusion = condition$DIFFUSION,
+        sample_size = condition$N
+      ), silent = TRUE)
+
+      # Check if base is recoverable
+      if(!is(simulated_base, "try-error") && recoverable(simulated_base)){
+        break
+      }
+
     }
 
-  }
-
-  # Generate until recoverable
-  while(TRUE){
-
     # Obtain error data
-    simulated_error <- psychNetwoRk:::silent_call(add_population_error(
+    simulated_error <- try(add_population_error(
       ggm_object = simulated_base, method = "tkl", metric = "cfi",
       fit_value = 0.97
-    ))
+    ), silent = TRUE)
 
     # Check if base is recoverable
-    if(convergence(simulated_error) && recoverable(simulated_error)){
+    if(!is(simulated_error, "try-error") && convergence(simulated_error) && recoverable(simulated_error)){
       break
     }
 
