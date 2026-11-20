@@ -17,24 +17,30 @@ recoverable <- function(simulated)
   }
 
   # Estimate memberships
+  R <- simulated$population$R; diag(R) <- 0
+  unidimensional <- community.consensus(R)
   walktrap <- community.detection(Omega)
   louvain <- community.consensus(Omega)
   prism <- community.prism(Omega)
 
   # Return recoverable
   return(
-    c(
-      walktrap = ifelse(
-        any(is.na(walktrap)), FALSE,
-        abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-      ),
-      louvain = ifelse(
-        any(is.na(louvain)), FALSE,
-        abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-      ),
-      prism = ifelse(
-        any(is.na(prism)), FALSE,
-        abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+    EGAnet:::swiftelse(
+      simulated$parameters$blocks == 1,
+      rep(EGAnet:::unique_length(unidimensional) == 1, 3),
+      c(
+        walktrap = ifelse(
+          any(is.na(walktrap)), FALSE,
+          abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+        ),
+        louvain = ifelse(
+          any(is.na(louvain)), FALSE,
+          abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+        ),
+        prism = ifelse(
+          any(is.na(prism)), FALSE,
+          abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+        )
       )
     )
   )
@@ -52,6 +58,7 @@ generate_condition <- function(condition)
   DM <- matrix(condition$BETWEEN, nrow = condition$BLOCKS, ncol = condition$BLOCKS)
   diag(DM) <- condition$WITHIN
 
+  # Initialize count
   count <- 0
 
   # Generate until recoverable
@@ -121,7 +128,6 @@ generate_condition <- function(condition)
 
           })
         )
-
       })
     )
   )
