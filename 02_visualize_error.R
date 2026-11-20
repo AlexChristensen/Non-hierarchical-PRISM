@@ -208,7 +208,7 @@ p4 <- ggplot(recovery_df, aes(x = NODES, y = recovery, color = algorithm)) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   scale_color_manual(values = algo_colors) +
   labs(
-    title = "Walktrap struggles with 4-node blocks; Louvain and PRISM stay near-perfect",
+    title = "Walktrap and Louvain struggle with 4-node blocks; PRISM holds up best",
     subtitle = "Share of replications recovering the true communities (y-axis does not start at zero)",
     x = "Nodes per block", y = "Recovery rate"
   ) +
@@ -288,7 +288,7 @@ p6 <- ggplot(method_recovery_df, aes(x = method, y = recovery, color = algorithm
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   scale_color_manual(values = algo_colors) +
   labs(
-    title = "Community recovery does not depend on the error method",
+    title = "Error method matters mainly at 4-node blocks; PRISM stays ahead under every method",
     subtitle = "Share of replications recovering the true communities (y-axis does not start at zero)",
     x = NULL, y = "Recovery rate"
   ) +

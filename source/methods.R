@@ -465,6 +465,10 @@ comparison_data <- function(
   k <- ncol(Data)
   cor_type <- if(Spearman) "spearman" else "pearson"
 
+  # A k-factor solution on k variables is not identified, so cap the search
+  # at k - 1 factors (also avoids requesting more eigenvectors than exist)
+  F.Max <- max(1, min(F.Max, k - 1))
+
   # Quantities that do not depend on the number of factors
   target_cor <- stats::cor(Data, method = cor_type, use = use)
   eigs_data <- eigen(target_cor, symmetric = TRUE, only.values = TRUE)$values

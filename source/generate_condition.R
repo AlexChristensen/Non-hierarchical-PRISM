@@ -18,25 +18,31 @@ recoverable <- function(simulated)
   }
 
   # Estimate memberships
+  R <- simulated$population$R; diag(R) <- 0
+  unidimensional <- community.consensus(R)
   walktrap <- community.detection(Omega)
   louvain <- community.consensus(Omega)
   prism <- community.prism(Omega)
 
   # Return recoverable
   return(
-    any(
-      c(
-        walktrap = ifelse(
-          any(is.na(walktrap)), FALSE,
-          abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-        ),
-        louvain = ifelse(
-          any(is.na(louvain)), FALSE,
-          abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-        ),
-        prism = ifelse(
-          any(is.na(prism)), FALSE,
-          abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+    EGAnet:::swiftelse(
+      simulated$parameters$blocks == 1,
+      EGAnet:::unique_length(unidimensional) == 1,
+      any(
+        c(
+          walktrap = ifelse(
+            any(is.na(walktrap)), FALSE,
+            abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+          ),
+          louvain = ifelse(
+            any(is.na(louvain)), FALSE,
+            abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+          ),
+          prism = ifelse(
+            any(is.na(prism)), FALSE,
+            abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
+          )
         )
       )
     )
@@ -52,11 +58,20 @@ convergence <- function(simulated)
 {
 
   # Set up logicals
-  cfi <- abs(simulated$population_error$fit[["CFI"]] - 0.97) < 0.01
   max_residual <- simulated$population_error$max_error < 0.10
+  max_discrepancy <- max(abs(simulated$population$discrepancy)) < 0.10
+
+  # Unidimensional: CFI is limited by the few degrees of freedom
+  # so only the residual and discrepancy criteria are used
+  if(simulated$parameters$blocks == 1){
+    return(all(max_residual, max_discrepancy))
+  }
+
+  # Multidimensional
+  cfi <- abs(simulated$population_error$fit[["CFI"]] - 0.97) < 0.01
 
   # Return convergence
-  return(all(cfi, max_residual))
+  return(all(cfi, max_residual, max_discrepancy))
 
 }
 
@@ -81,7 +96,7 @@ generate_condition <- function(condition)
       simulated_base <- try(simulate_sbm(
         nodes = condition$NODES, blocks = condition$BLOCKS,
         density_matrix = DM, diffusion = condition$DIFFUSION,
-        sample_size = 1
+        sample_size = 1, negative_proportion = 0
       ), silent = TRUE)
 
       # Check if base is recoverable
@@ -91,10 +106,37 @@ generate_condition <- function(condition)
 
     }
 
+    # Set CFI target
+    target <- 0.97
+
+    # Set CFI target
+    if(condition$BLOCKS == 1){
+
+      # Loop by increasing CFI target
+      while(TRUE){
+
+        # Obtain error data
+        simulated_error <- try(add_population_error(
+          ggm_object = simulated_base, method = "tkl", metric = "cfi",
+          fit_value = target
+        ), silent = TRUE)
+
+        # Check if base is recoverable
+        if(is(simulated_error, "try-error") || convergence(simulated_error)){
+          break
+        }
+
+        # Increase target
+        target <- sqrt(target)
+
+      }
+
+    }
+
     # Obtain error data
     simulated_error <- try(add_population_error(
       ggm_object = simulated_base, method = "tkl", metric = "cfi",
-      fit_value = 0.97
+      fit_value = target
     ), silent = TRUE)
 
     # Check if base is recoverable

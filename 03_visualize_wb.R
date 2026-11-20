@@ -179,7 +179,7 @@ save_plot(p3, "03_srmr_residual_by_design.png", 11, 6)
 # (the design is balanced, so levels differ only in the factor itself)
 factor_names <- c(
   BLOCKS = "Blocks", NODES = "Nodes", WITHIN = "Within",
-  BETWEEN = "Between", DIFFUSION = "Diffusion", N = "N"
+  BETWEEN = "Between", DIFFUSION = "Diffusion"
 )
 # Numeric order of every level so each panel sorts correctly
 level_order <- as.character(sort(unique(unlist(wb[names(factor_names)]))))
@@ -205,10 +205,10 @@ p4 <- ggplot(factor_df, aes(x = level, y = median, group = 1)) +
   geom_point(size = 2.8, shape = 21, color = wb_color, fill = surface, stroke = 1.3) +
   facet_grid(index ~ factor, scales = "free", switch = "y") +
   labs(
-    title = "Blocks drive wb's side effects most; nodes, between, and N add some",
+    title = "Blocks drive wb's side effects most; nodes add some, the other factors little",
     subtitle = paste0(
       "Median outcome at each factor level, pooled over RMSEA targets; ",
-      "within and diffusion barely matter (y-axes do not start at zero)"
+      "within, between, and diffusion barely matter (y-axes do not start at zero)"
     ),
     x = NULL, y = NULL
   ) +
@@ -221,13 +221,16 @@ save_plot(p4, "04_factor_effects.png", 12, 6)
 #### 5. Where community recovery fails ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
-# Miss rate of each algorithm (Louvain never missed) by blocks, nodes, and between
+# Miss rate of each algorithm by blocks, nodes, and between
 miss_df <- wb %>%
   group_by(BLOCKS, NODES, BETWEEN) %>%
-  summarize(Walktrap = mean(!walktrap), PRISM = mean(!prism), .groups = "drop") %>%
-  pivot_longer(c(Walktrap, PRISM), names_to = "algorithm", values_to = "miss") %>%
+  summarize(
+    Walktrap = mean(!walktrap), Louvain = mean(!louvain), PRISM = mean(!prism),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(c(Walktrap, Louvain, PRISM), names_to = "algorithm", values_to = "miss") %>%
   mutate(
-    algorithm = factor(algorithm, levels = c("Walktrap", "PRISM")),
+    algorithm = factor(algorithm, levels = c("Walktrap", "Louvain", "PRISM")),
     BLOCKS = factor(BLOCKS), NODES = factor(NODES),
     BETWEEN = factor(BETWEEN, labels = paste("Between =", sort(unique(BETWEEN)))),
     label = sprintf("%.1f%%", 100 * miss)
@@ -242,16 +245,13 @@ p5 <- ggplot(miss_df, aes(x = NODES, y = BLOCKS, fill = miss)) +
     labels = scales::percent_format(accuracy = 1), name = "Miss rate"
   ) +
   labs(
-    title = "Walktrap misses 4-node blocks; PRISM's rare misses cluster at 8 blocks",
-    subtitle = paste0(
-      "Share of replications failing to recover the true communities ",
-      "(Louvain missed none)"
-    ),
+    title = "Walktrap and Louvain miss small blocks and many blocks; PRISM misses far less",
+    subtitle = "Share of replications failing to recover the true communities",
     x = "Nodes per block", y = "Blocks"
   ) +
   theme_wb() +
   theme(panel.grid = element_blank(), legend.position = "right")
 
-save_plot(p5, "05_recovery_misses.png", 10, 5)
+save_plot(p5, "05_recovery_misses.png", 10, 7)
 
 cat("Saved figures to ./figures/wb/\n")

@@ -28,12 +28,29 @@ source("./source/generate_condition.R")
 
 # Set conditions
 conditions <- expand.grid(
-  BLOCKS = c(2, 4, 8),
+  BLOCKS = c(1, 3, 5, 7),
   NODES = c(4, 8, 12),
   WITHIN = c(0.85, 0.95),
   BETWEEN = c(0.10, 0.20),
   DIFFUSION = c(0.10, 0.20)
 )
+
+# Set for unidimensional conditions
+## Remove WITHIN
+conditions <- conditions[
+  !((conditions$BLOCKS == 1) & (conditions$WITHIN == 0.85)),
+]
+## Remove BETWEEN
+conditions <- conditions[
+  !((conditions$BLOCKS == 1) & (conditions$BETWEEN == 0.20)),
+]
+## Remove DIFFUSION
+conditions <- conditions[
+  !((conditions$BLOCKS == 1) & (conditions$DIFFUSION == 0.20)),
+]
+## Set BETWEEN and DIFFUSION to zero
+conditions$BETWEEN[conditions$BLOCKS == 1] <- 0
+conditions$DIFFUSION[conditions$BLOCKS == 1] <- 0
 
 # Number of conditions
 n_conditions <- nrow(conditions)
@@ -54,19 +71,7 @@ for(i in seq_len(n_conditions)){
   # Generate replicate results
   replicate <- mclapply(
     seq_len(100), function(j){
-
-      # Regenerate with error
-      data_condition <- list()
-      class(data_condition) <- "try-error"
-
-      # Loop until good condition
-      while(is(data_condition, "try-error")){
-        data_condition <- try(generate_condition(condition), silent = TRUE)
-      }
-
-      # Combine results
-      return(data_condition)
-
+      generate_condition(condition)
     }, mc.cores = 50, mc.preschedule = FALSE
   )
 

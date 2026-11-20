@@ -42,7 +42,7 @@ efa <- function(R, n.obs, nfactors, randomStarts = 100L, ...)
   }else{
 
     # Set loadings
-    loadings <- EFA$loadings[,seq_len(nfactors)]
+    loadings <- EFA$loadings[,seq_len(nfactors), drop = FALSE]
 
   }
 

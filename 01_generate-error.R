@@ -89,10 +89,10 @@ results <- do.call(rbind.data.frame, lapply(FILES, function(file){
 }))
 
 # Ensure numeric
-results[,10:14] <- lapply(results[,10:14], as.numeric)
+results[,9:13] <- lapply(results[,9:13], as.numeric)
 
 # Ensure logical
-results[,15:17] <- lapply(results[,15:17], as.logical)
+results[,14:16] <- lapply(results[,14:16], as.logical)
 
 # Set up name
 error_results <- results

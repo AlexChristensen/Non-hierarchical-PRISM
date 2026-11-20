@@ -70,7 +70,7 @@ save_plot <- function(plot, name, width, height){
 # Design factors and the outcomes shown
 factor_names <- c(
   BLOCKS = "Blocks", NODES = "Nodes", WITHIN = "Within",
-  BETWEEN = "Between", DIFFUSION = "Diffusion", N = "N"
+  BETWEEN = "Between", DIFFUSION = "Diffusion"
 )
 outcomes <- c("RMSEA", "SRMR", "Max residual")
 

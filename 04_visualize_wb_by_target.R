@@ -137,7 +137,7 @@ save_plot(p2, "02_cfi_cells_by_target.png", 13, 4)
 # Median outcome at each factor level, one line per target
 factor_names <- c(
   BLOCKS = "Blocks", NODES = "Nodes", WITHIN = "Within",
-  BETWEEN = "Between", DIFFUSION = "Diffusion", N = "N"
+  BETWEEN = "Between", DIFFUSION = "Diffusion"
 )
 level_order <- as.character(sort(unique(unlist(wb[names(factor_names)]))))
 
@@ -176,39 +176,58 @@ save_plot(p3, "03_factor_effects_by_target.png", 12, 6.5)
 #### 4. Recovery misses by target ####
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
-# Walktrap misses by nodes (its driver); PRISM misses by blocks (its driver)
-walktrap_df <- wb %>%
-  group_by(target, NODES = factor(NODES, labels = paste(sort(unique(NODES)), "nodes"))) %>%
-  summarize(miss = mean(!walktrap), .groups = "drop")
+# Miss rate of each algorithm by target, split by blocks (top row) and by
+# nodes per block (bottom row); all panels share one y-scale
+algorithms <- c(Walktrap = "walktrap", Louvain = "louvain", PRISM = "prism")
 
-prism_df <- wb %>%
-  group_by(target, BLOCKS = factor(BLOCKS, labels = paste(sort(unique(BLOCKS)), "blocks"))) %>%
-  summarize(miss = mean(!prism), .groups = "drop")
+miss_by <- function(group, label){
+  bind_rows(lapply(names(algorithms), function(algorithm){
+    wb %>%
+      group_by(target, level = factor(
+        .data[[group]], labels = paste(sort(unique(.data[[group]])), label)
+      )) %>%
+      summarize(miss = mean(!.data[[algorithms[[algorithm]]]]), .groups = "drop") %>%
+      mutate(algorithm = algorithm)
+  }))
+}
 
-recovery_panel <- function(data, group, title){
-  ggplot(data, aes(x = target, y = miss, color = .data[[group]])) +
+blocks_miss <- miss_by("BLOCKS", "blocks")
+nodes_miss <- miss_by("NODES", "nodes")
+miss_max <- max(blocks_miss$miss, nodes_miss$miss)
+
+recovery_panel <- function(data, algorithm, ylab, title = NULL){
+  ggplot(filter(data, algorithm == !!algorithm), aes(x = target, y = miss, color = level)) +
     geom_line(linewidth = 0.8) +
     geom_point(size = 2.4, shape = 21, fill = surface, stroke = 1.2) +
     scale_color_manual(values = shades, name = NULL) +
     scale_x_continuous(breaks = target_levels) +
     scale_y_continuous(
-      labels = scales::percent_format(accuracy = 0.1),
-      limits = c(0, NA)
+      labels = scales::percent_format(accuracy = 1), limits = c(0, miss_max)
     ) +
-    labs(title = title, x = "Target RMSEA", y = "Miss rate") +
+    labs(title = title, x = "Target RMSEA", y = ylab) +
     theme_wb() +
     theme(plot.title = element_text(face = "bold", size = 12))
 }
 
-p4 <- (recovery_panel(walktrap_df, "NODES", "Walktrap: flat in the target, driven by nodes") |
-  recovery_panel(prism_df, "BLOCKS", "PRISM: rises with the target, driven by blocks")) +
+# Top row: by blocks; bottom row: by nodes (algorithm names shown on top row only)
+p4 <- (
+  wrap_plots(lapply(names(algorithms), function(a){
+    recovery_panel(blocks_miss, a, "Miss rate (by blocks)", title = a)
+  }), nrow = 1) /
+  wrap_plots(lapply(names(algorithms), function(a){
+    recovery_panel(nodes_miss, a, "Miss rate (by nodes)")
+  }), nrow = 1)
+) +
   plot_annotation(
-    title = "Community recovery misses by RMSEA target",
-    subtitle = "Share of replications failing to recover the true communities (Louvain missed none)",
+    title = "Misses rise with the RMSEA target for every algorithm, and PRISM misses least",
+    subtitle = paste0(
+      "Share of replications failing to recover the true communities, ",
+      "by blocks (top) and nodes per block (bottom)"
+    ),
     theme = theme_wb()
   )
 
-save_plot(p4, "04_recovery_misses_by_target.png", 11, 4.6)
+save_plot(p4, "04_recovery_misses_by_target.png", 12, 8)
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 #### 5. Global vs. local misfit by target ####
