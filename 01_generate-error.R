@@ -34,23 +34,6 @@ conditions <- expand.grid(
   DIFFUSION = c(0.10, 0.20)
 )
 
-# Set for unidimensional conditions
-## Remove WITHIN
-conditions <- conditions[
-  !((conditions$BLOCKS == 1) & (conditions$WITHIN == 0.85)),
-]
-## Remove BETWEEN
-conditions <- conditions[
-  !((conditions$BLOCKS == 1) & (conditions$BETWEEN == 0.20)),
-]
-## Remove DIFFUSION
-conditions <- conditions[
-  !((conditions$BLOCKS == 1) & (conditions$DIFFUSION == 0.20)),
-]
-## Set BETWEEN and DIFFUSION to zero
-conditions$BETWEEN[conditions$BLOCKS == 1] <- 0
-conditions$DIFFUSION[conditions$BLOCKS == 1] <- 0
-
 # Number of conditions
 n_conditions <- nrow(conditions)
 n_digits <- latentFactoR:::digits(n_conditions) - 1
