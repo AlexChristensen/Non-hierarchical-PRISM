@@ -24,6 +24,7 @@ library(latentFactoR); library(parallel); library(tidyverse)
 
 # Load source functions
 source("./source/generate_error.R")
+source("./source/results.R")
 
 # Set conditions
 conditions <- expand.grid(
@@ -100,7 +101,7 @@ error_results <- results
 save(error_results, file = "error_results.RData")
 
 # Print results
-results %>%
+error_results %>%
   group_by(method, metric, value) %>%
   summarize(
     mean_cfi = mean(CFI, na.rm = TRUE),
@@ -123,7 +124,5 @@ results %>%
     sd_res = sd(max_residual, na.rm = TRUE),
     min_res = min(max_residual, na.rm = TRUE),
     max_res = max(max_residual, na.rm = TRUE),
-    mean_walktrap = mean(walktrap, na.rm = TRUE),
-    mean_louvain = mean(louvain, na.rm = TRUE),
-    mean_prism = mean(prism, na.rm = TRUE)
+    recoverable = mean(recoverable, na.rm = TRUE)
   ) %>% as.data.frame() %>% print(digits = 3)
