@@ -102,7 +102,7 @@ save(error_results, file = "error_results.RData")
 
 
 # Print results
-results %>%
+error_results %>%
   group_by(method, metric, value) %>%
   summarize(
     mean_cfi = mean(CFI, na.rm = TRUE),

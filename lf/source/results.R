@@ -9,9 +9,14 @@ library(psych); library(GPArotation); library(igraph); library(compiler)
 obtain_memberships <- function(loadings, true_membership, overlap)
 {
 
+  # Check for NA
+  if(all(is.na(loadings))){
+    return(NA)
+  }
+
   # Obtain memberships
   factor_sequence <- seq_len(ncol(loadings))
-  primary <- outer(max.col(abs(loadings)), factor_sequence, "==")
+  primary <- outer(max.col(loadings), factor_sequence, "==")
 
   # Check for overlap
   if(overlap){
@@ -138,78 +143,107 @@ efa <- function(data, nfactors, corr, n.obs = NULL, randomStarts = 100L, ...)
 # Compile
 efa <- cmpfun(efa)
 
-# Membership comparison
-membership_compare <- function(empirical, true)
+# EFA loadings
+efa_loadings <- function(R, n.obs, nfactors)
 {
 
-  # Check for missing
-  missing <- is.na(empirical)
-
-  # Check for all missing
-  if(all(missing)){
+  # Check for number of factors
+  if(is.na(nfactors) || nfactors < 1){
     return(NA)
   }
 
-  # Return results
-  return(compare(empirical[!missing], true[!missing], method = "adjusted.rand"))
+  # Estimate EFA (guard against too many factors)
+  EFA <- try(
+    EGAnet:::silent_call(efa(
+      data = R, nfactors = nfactors, corr = "polychoric", n.obs = n.obs
+    )), silent = TRUE
+  )
+
+  # Check for error
+  if(is(EFA, "try-error")){
+    return(NA)
+  }
+
+  # Return memberships
+  return(abs(EFA$loadings))
 
 }
 
 # Compile function
-membership_compare <- cmpfun(membership_compare)
+efa_loadings <- cmpfun(efa_loadings)
 
 # Obtain results
-obtain_results <- function(data, membership, condition_df)
+obtain_results <- function(samples, condition_df)
 {
 
-  # Obtain sample size
-  N <- dim(data)[1]
+  # Set error flag
+  error_flag <- "original_results" %in% names(samples)
 
-  # Obtain dimensionality
-  result <- obtain_methods(data)
+  # Set up true membership
+  if(error_flag){
+    true_membership <- abs(samples$original_results$parameters$loadings) >= 0.40
+  }else{
+    true_membership <- abs(samples$parameters$loadings) >= 0.40
+  }
 
-  # Obtain dimensions
-  dimensions <- unlist(result[-c(1:3)])
+  # Obtain dataset
+  return(
+    do.call(rbind.data.frame, lapply(samples$data, function(data){
 
-  # Obtain unique dimensions
-  unique_dimensions <- unique(dimensions)
+      # Obtain sample size
+      N <- dim(data)[1]
 
-  # Estimate factor memberships
-  efa_memberships <- lapply(
-    unique_dimensions, function(u){
-      efa(
-        R = attributes(result)$R,
-        n.obs = N,
-        nfactors = u
+      # Obtain dimensionality
+      result <- EGAnet:::silent_call(obtain_methods(data))
+
+      # Obtain dimensions
+      dimensions <- unlist(result[-c(1:3)])
+
+      # Obtain unique dimensions
+      unique_dimensions <- unique(dimensions)
+
+      # Obtain network membership
+      ega_memberships <- lapply(
+        result[1:3], obtain_memberships,
+        true_membership = true_membership,
+        overlap = samples$overlap
       )
-    }
+
+      # Estimate factor memberships
+      efa_memberships <- lapply(
+        unique_dimensions, function(u){
+          obtain_memberships(
+            loadings = efa_loadings(
+              R = attributes(result)$R,
+              n.obs = N,
+              nfactors = u
+            ), true_membership = true_membership,
+            overlap = samples$overlap
+          )
+        }
+      )
+
+      # Set up result
+      combined_result <- data.frame(
+        METHOD = names(result),
+        N = N, OVERLAP = samples$overlap, ERROR = error_flag,
+        NDIM = c(
+          EGAnet:::nvapply(result[c(1:3)], ncol),
+          dimensions
+        ),
+        ARI = c(
+          EGAnet:::nvapply(ega_memberships, omega_index, true_membership),
+          EGAnet:::nvapply(efa_memberships, omega_index, true_membership)[
+            match(dimensions, unique_dimensions)
+          ]
+        )
+      )
+
+      # Attach condition data frame
+      return(cbind.data.frame(condition_df, combined_result))
+
+    }))
   )
-
-  # Set up result
-  combined_result <- data.frame(
-    METHOD = names(result),
-    N = N,
-    NDIM = c(
-      EGAnet:::unique_length(result$walktrap),
-      EGAnet:::unique_length(result$louvain),
-      EGAnet:::unique_length(result$prism),
-      dimensions
-    ),
-    ARI = c(
-      membership_compare(result$walktrap, membership),
-      membership_compare(result$louvain, membership),
-      membership_compare(result$prism, membership),
-      EGAnet:::nvapply(efa_memberships, membership_compare, membership)[
-        match(dimensions, unique_dimensions)
-      ]
-    )
-  )
-
-  # Attach condition data frame
-  combined_result <- cbind.data.frame(condition_df, combined_result)
-
-  # Return results
-  return(combined_result)
 
 }
 

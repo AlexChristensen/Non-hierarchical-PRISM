@@ -10,7 +10,7 @@ recoverable <- function(simulated)
 {
 
   # Update simulated (if necessary)
-  if("original_results" %in% names(simulated)){
+  if(is(simulated, "lf_pe")){
     simulated <- list(
       population_correlation = simulated$population_correlation,
       parameters = simulated$original_results$parameters,
@@ -22,7 +22,7 @@ recoverable <- function(simulated)
   EFA <- EGAnet:::silent_call(efa(
     data = simulated$population_correlation,
     nfactors = simulated$parameters$factors,
-    cor = "pearson"
+    corr = "pearson"
   ))
 
   # Set up true loadings
@@ -42,32 +42,42 @@ recoverable <- function(simulated)
   # Set true membership
   true_membership <- abs(true_loadings) >= 0.40
 
-  # Obtain whether it's recoverable
-  if(simulated$parameters$factors == 1){
-
-    # Check if identical
-    recoverable <- identical(
-      obtain_memberships(aligned$F2, true_membership, simulated$overlap),
-      true_membership
-    )
-
-  }else{
-
-    # Obtain Omega index
-    recoverable <- omega_index(
+  # Return recoverable
+  return(
+    omega_index(
       obtain_memberships(aligned$F2, true_membership, simulated$overlap),
       true_membership
     ) == 1
-
-  }
-
-  # Return recoverable
-  return(list(recoverable = recoverable, max_abs_res = max(abs(EFA$implied_R - simulated$population_correlation))))
+  )
 
 }
 
 # Compile function
 recoverable <- cmpfun(recoverable)
+
+# Convergence Criterion
+convergence <- function(simulated)
+{
+
+  # Set up logicals
+  max_residual <- simulated$population_error$max_error < 0.10
+
+  # Unidimensional: CFI is limited by the few degrees of freedom
+  # so only the residual and discrepancy criteria are used
+  if(simulated$original_results$parameters$factors == 1){
+    return(max_residual)
+  }
+
+  # Multidimensional
+  cfi <- abs(simulated$population_error$fit[["CFI"]] - 0.97) < 0.01
+
+  # Return convergence
+  return(all(cfi, max_residual))
+
+}
+
+# Compile function
+convergence <- cmpfun(convergence)
 
 # Generate condition
 generate_condition <- function(condition)
@@ -80,7 +90,7 @@ generate_condition <- function(condition)
   factor_sequence <- seq_len(condition$NFAC)
 
   # Number of overlapping cross-loadings to add
-  cross_add <- condition$NVAR * 0.25
+  cross_add <- switch(condition$NVAR, "4" = 1, "8" = 2, "12" = 2)
 
   # Set unidimensional flag
   unidimensional_flag <- condition$NFAC == 1
@@ -101,22 +111,15 @@ generate_condition <- function(condition)
       # Add overlap
       no_overlap$overlap <- FALSE
 
-      # Check convergence
-      convergence <- recoverable(no_overlap)
-
-      # Check if base is recoverable
-      if(
-        is(no_overlap, "try-error") ||
-        !convergence$recoverable ||
-        (abs(convergence$max_abs_res) > 0.10)
-      ){
-        next
-      }
-
       # Check for unidimensional
       if(unidimensional_flag){
         break
       }else{
+
+        # Check if base is recoverable
+        if(is(no_overlap, "try-error") || !recoverable(no_overlap)){
+          next
+        }
 
         # Set loadings
         loadings <- no_overlap$parameters$loadings
@@ -163,15 +166,8 @@ generate_condition <- function(condition)
         # Add overlap
         overlap$overlap <- TRUE
 
-        # Check convergence
-        convergence <- recoverable(overlap)
-
         # Check if base is recoverable
-        if(
-          !is(overlap, "try-error") &&
-          convergence$recoverable &&
-          (abs(convergence$max_abs_res) < 0.10)
-        ){
+        if(!is(overlap, "try-error") && recoverable(overlap)){
           break
         }
 
@@ -179,52 +175,80 @@ generate_condition <- function(condition)
 
     }
 
-    # Add error
-    no_overlap_error <- add_population_error(
-      lf_object = no_overlap, method = "tkl",
-      metric = "cfi", fit_value = 0.97
-    )
+    # Set CFI target
+    target <- 0.97
 
-    # Add overlap
-    no_overlap_error$overlap <- FALSE
+    # Set CFI target
+    if(unidimensional_flag){
 
-    # Check convergence
-    convergence <- recoverable(no_overlap_error)
+      # Loop by increasing CFI target
+      while(TRUE){
 
-    # Check if base is recoverable
-    if(
-      !is(no_overlap_error, "try-error") &&
-      convergence$recoverable &&
-      (abs(convergence$max_abs_res) < 0.10)
-    ){
-
-      # Check for unidimensional
-      if(unidimensional_flag){
-        break
-      }else{
-
-        # Add error
-        overlap_error <- add_population_error(
-          lf_object = overlap, method = "tkl",
-          metric = "cfi", fit_value = 0.97,
-          leave_cross_loadings = TRUE
-        )
+        # Obtain error data
+        no_overlap_error <- try(add_population_error(
+          lf_object = no_overlap, method = "tkl",
+          metric = "cfi", fit_value = target,
+          control = list(decay = 0.10)
+        ), silent = TRUE)
 
         # Add overlap
-        overlap_error$overlap <- TRUE
-
-        # Check convergence
-        convergence <- recoverable(overlap_error)
+        no_overlap_error$overlap <- FALSE
 
         # Check if base is recoverable
         if(
-          !is(overlap_error, "try-error") &&
-          convergence$recoverable &&
-          (abs(convergence$max_abs_res) < 0.10)
+          !is(no_overlap_error, "try-error") &&
+          convergence(no_overlap_error)
         ){
           break
         }
 
+        # Increase target
+        target <- sqrt(target)
+
+      }
+
+      # Break out of main loop
+      break
+
+    }else{
+
+      # Obtain error data
+      no_overlap_error <- try(add_population_error(
+        lf_object = no_overlap, method = "tkl",
+        metric = "cfi", fit_value = target,
+        control = list(decay = 0.10)
+      ), silent = TRUE)
+
+      # Add overlap
+      no_overlap_error$overlap <- FALSE
+
+      # Check if base is recoverable
+      if(
+        is(no_overlap_error, "try-error") ||
+        !recoverable(no_overlap_error) ||
+        !convergence(no_overlap_error)
+      ){
+        next
+      }
+
+      # Add error
+      overlap_error <- add_population_error(
+        lf_object = overlap, method = "tkl",
+        metric = "cfi", fit_value = target,
+        leave_cross_loadings = TRUE,
+        control = list(decay = 0.10)
+      )
+
+      # Add overlap
+      overlap_error$overlap <- TRUE
+
+      # Check if base is recoverable
+      if(
+        !is(overlap_error, "try-error") &&
+        recoverable(overlap_error) &&
+        convergence(overlap_error)
+      ){
+        break
       }
 
     }
@@ -244,15 +268,17 @@ generate_condition <- function(condition)
     cholesky_overlap_error <- chol(overlap_error$population_correlation)
   }
 
-
   # Obtain means and Sigma
   means <- rep(0, total_variables); Sigma <- diag(total_variables)
 
+  # Set sample sizes
+  N <- c(500, 1000, 2500, 5000)
+
   # Generate samples
-  samples <- lapply(c(500, 1000, 2500, 5000), function(N){
+  samples <- lapply(N, function(n){
 
     # Generate data
-    data <- rmvnorm(n = N, mean = means, sigma = Sigma)
+    data <- rmvnorm(n = n, mean = means, sigma = Sigma)
 
     # Create correlated data
     data_no_overlap <- data %*% cholesky_no_overlap
@@ -300,6 +326,32 @@ generate_condition <- function(condition)
     return(result)
 
   })
+
+  # Set up final list
+  result_list <- list()
+
+  # Add samples to conditions
+  no_overlap$data <- structure(lapply(samples, function(x){x$no_overlap}), names = N)
+  result_list$no_overlap <- no_overlap
+  rm(no_overlap)
+  no_overlap_error$data <- structure(lapply(samples, function(x){x$no_overlap_error}), names = N)
+  result_list$no_overlap_error <- no_overlap_error
+  rm(no_overlap_error)
+
+  # Check for unidimensional
+  if(!unidimensional_flag){
+    overlap$data <- structure(lapply(samples, function(x){x$overlap}), names = N)
+    result_list$overlap <- overlap
+    rm(overlap)
+    overlap_error$data <- structure(lapply(samples, function(x){x$overlap_error}), names = N)
+    result_list$overlap_error <- overlap_error
+    rm(overlap_error)
+  }
+
+
+
+  # Return final list
+  return(result_list)
 
 }
 

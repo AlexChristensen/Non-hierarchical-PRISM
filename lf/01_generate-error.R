@@ -62,6 +62,16 @@ for(i in seq_len(n_conditions)){
     }, mc.cores = 50, mc.preschedule = FALSE
   )
 
+  # Check for failed replicates (try-error or NULL from killed workers)
+  failed <- !vapply(replicate, is.data.frame, logical(1))
+  if(any(failed)){
+    warning(
+      "Condition ", condition_number, ": failed replicates ",
+      paste(which(failed), collapse = ", "), call. = FALSE
+    )
+    replicate <- replicate[!failed]
+  }
+
   # Summarize replicate
   replicate_df <- do.call(rbind.data.frame, replicate)
   rm(replicate)
@@ -89,7 +99,7 @@ results <- do.call(rbind.data.frame, lapply(FILES, function(file){
 }))
 
 # Ensure numeric
-results[,8:12] <- lapply(results[,8:12], as.numeric)
+results[,c(7:12)] <- lapply(results[,c(7:12)], as.numeric)
 
 # Ensure logical
 results[,13:14] <- lapply(results[,13:14], as.logical)

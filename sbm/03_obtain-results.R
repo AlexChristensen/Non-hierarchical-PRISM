@@ -57,9 +57,6 @@ conditions$DIFFUSION[conditions$BLOCKS == 1] <- 0
 n_conditions <- nrow(conditions)
 n_digits <- latentFactoR:::digits(n_conditions) - 1
 
-# Initialize results
-results <- vector("list", n_conditions)
-
 # Loop over results
 for(i in seq_len(n_conditions)){
 
@@ -110,6 +107,15 @@ for(i in seq_len(n_conditions)){
     }, mc.cores = 50, mc.preschedule = FALSE
   )
 
+  # Check for failed replicates (try-error or NULL from killed workers)
+  failed <- !vapply(replicate_results, is.data.frame, logical(1))
+  if(any(failed)){
+    warning(
+      "Condition ", condition_number, ": failed replicates ",
+      paste(which(failed), collapse = ", "), call. = FALSE
+    )
+  }
+
   # Save condition
   save(replicate_results, file = paste0("./results/condition_", condition_number, ".RData"))
 
@@ -135,9 +141,13 @@ sbm_results <- do.call(rbind.data.frame, lapply(FILES, function(file){
 # Save results
 save(sbm_results, file = "sbm_results.RData")
 
+sbm_results$NDIM <- as.numeric(sbm_results$NDIM)
+sbm_results$BLOCKS <- as.numeric(sbm_results$BLOCKS)
+
 # Summary of results
 sbm_results %>%
-  group_by(METHOD, BLOCKS, ERROR) %>%
+  filter(!grepl("Error", METHOD)) %>%
+  group_by(METHOD, BLOCKS, NODES, ERROR) %>%
   summarize(
     PC = mean(NDIM == BLOCKS, na.rm = TRUE),
     MAE = mean(abs(NDIM - BLOCKS), na.rm = TRUE),

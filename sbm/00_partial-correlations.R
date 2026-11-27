@@ -10,16 +10,15 @@ source("./source/distributions.R")
 
 # Set conditions
 conditions <- expand.grid(
-  NFAC = c(1, 2, 5, 8),
+  NFAC = c(1, 3, 5, 7),
   NVAR = c(4, 8, 12),
-  LOAD = c(0.50, 0.70),
-  CROSS = c(0.05, 0.075),
-  CORF = c(0.00, 0.30, 0.60)
+  LOAD = c(0.50, 0.60, 0.70),
+  CORF = c(0.30, 0.60)
 )
 
 # Remove extra unidimensional conditions
 conditions <- conditions[
-  !((conditions$NFAC == 1) & (conditions$CORF %in% c(0.30, 0.60))),
+  !((conditions$NFAC == 1) & (conditions$CORF %in% c(0.60))),
 ]
 
 # Set distributions

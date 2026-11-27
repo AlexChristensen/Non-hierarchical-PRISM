@@ -19,11 +19,18 @@ recoverable <- function(simulated)
   }
 
   # Estimate EFA on population correlation matrix
-  EFA <- EGAnet:::silent_call(efa(
-    data = simulated$population_correlation,
-    nfactors = simulated$parameters$factors,
-    cor = "pearson"
-  ))
+  EFA <- try(
+    EGAnet:::silent_call(efa(
+      data = simulated$population_correlation,
+      nfactors = simulated$parameters$factors,
+      corr = "pearson"
+    )), silent = TRUE
+  )
+
+  # Check for estimation failure
+  if(is(EFA, "try-error")){
+    return(list(recoverable = FALSE, max_abs_res = NA))
+  }
 
   # Set up true loadings
   true_loadings <- simulated$parameters$loadings
@@ -65,7 +72,7 @@ generate_condition <- function(condition)
 {
 
   # Total variables
-  total_variables <- condition$NVAR * condition$NVAC
+  total_variables <- condition$NVAR * condition$NFAC
 
   # Set factor sequence
   factor_sequence <- seq_len(condition$NFAC)

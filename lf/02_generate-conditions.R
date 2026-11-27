@@ -21,7 +21,7 @@ RhpcBLASctl::omp_set_num_threads(1)
 dir.create("./conditions", showWarnings = FALSE)
 
 # Load packages
-library(psychNetwoRk); library(parallel); library(tidyverse)
+library(latentFactoR); library(parallel); library(tidyverse)
 
 # Load source functions
 source("./source/generate_condition.R")
@@ -32,23 +32,20 @@ conditions <- expand.grid(
   NFAC = c(1, 3, 5, 7),
   NVAR = c(4, 8, 12),
   LOAD = c(0.50, 0.60, 0.70),
-  CORF = c(0.25, 0.50, 0.75)
+  CORF = c(0.30, 0.60)
 )
 
 # Set for unidimensional conditions
 conditions <- conditions[
-  !((conditions$NFAC == 1) & (conditions$CORF %in% c(0.50, 0.75))),
+  !((conditions$NFAC == 1) & (conditions$CORF %in% c(0.60))),
 ]
 
 # Number of conditions
 n_conditions <- nrow(conditions)
 n_digits <- latentFactoR:::digits(n_conditions) - 1
 
-# Initialize results
-results <- vector("list", n_conditions)
-
 # Loop over results
-for(i in seq_len(n_conditions)){
+for(i in 21){# seq_len(n_conditions)){
 
   # Obtain condition
   condition <- conditions[i,]

@@ -230,6 +230,13 @@ kaiser_guttman <- cmpfun(kaiser_guttman)
 
 # Empirical Kaiser criterion (Braeken & van Assen, 2017)
 #
+# NOTE: intentionally differs from the published criterion. Equation 2 of the
+# paper (and `latentFactoR:::EKC()`) subtracts the previous *observed*
+# eigenvalues, whereas this subtracts the previous *reference* values, as in
+# the factor forest (Goretzko & Buhner, 2020). The factor forest model was
+# trained on this version and takes its result as a feature, so keep it as is.
+# `obtain_methods()` also reports it as the `ekc` result.
+#
 # Restricted version: reference eigenvalues are never below one
 # `R` is a correlation matrix and `N` is the sample size;
 # supply `eigenvalues` to skip the decomposition
@@ -799,7 +806,7 @@ obtain_methods <- function(data)
 {
 
   # Get variable names
-  variables <- colnames(data)
+  variables <- dim(data)[2]
 
   # Get sample size
   N <- dim(data)[1]
@@ -810,11 +817,17 @@ obtain_methods <- function(data)
   # EGA
   ega <- EGA(R, n = N, plot.EGA = FALSE)
 
-  # Initialize unidimensional flag
-  unidimensional <- ega$n.dim == 1
+  # Set names
+  variable_names <- dimnames(ega$network)[[2]]
 
   # Check for flag
-  uni_solution <- rep(1, length(variables))
+  uni_solution <- rep(1, variables)
+
+  # Compute unidimensional
+  diag(R) <- 0
+
+  # Initialize unidimensional flag
+  unidimensional <- EGAnet:::unique_length(community.consensus(R, resolution = 0.95)) == 1
 
   ## Walktrap
   walktrap <- EGAnet:::swiftelse(
@@ -833,6 +846,23 @@ obtain_methods <- function(data)
     unidimensional, uni_solution,
     community.prism(ega$network)
   )
+
+  # Obtain memberships
+  ## Walktrap
+  walktrap <- abs(
+    net.loads(A = ega$network, wc = walktrap)$std[variable_names,, drop = FALSE]
+  )
+  ## Louvain
+  louvain <- abs(
+    net.loads(A = ega$network, wc = louvain)$std[variable_names,, drop = FALSE]
+  )
+  ## PRISM
+  prism <- abs(
+    net.loads(A = ega$network, wc = prism)$std[variable_names,, drop = FALSE]
+  )
+
+  # Update R diagonal
+  diag(R) <- 1
 
   # Estimate parallel analysis
   pa <- parallel_analysis(data, corr = "polychoric")
