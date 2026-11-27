@@ -52,6 +52,9 @@ conditions <- conditions[
 conditions$BETWEEN[conditions$BLOCKS == 1] <- 0
 conditions$DIFFUSION[conditions$BLOCKS == 1] <- 0
 
+# Remove row names
+row.names(conditions) <- NULL
+
 # Number of conditions
 n_conditions <- nrow(conditions)
 n_digits <- latentFactoR:::digits(n_conditions) - 1

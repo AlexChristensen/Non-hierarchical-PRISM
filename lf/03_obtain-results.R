@@ -43,6 +43,9 @@ conditions <- conditions[
 n_conditions <- nrow(conditions)
 n_digits <- latentFactoR:::digits(n_conditions) - 1
 
+# Remove row names
+row.names(conditions) <- NULL
+
 # Number of methods (rows returned per dataset by `obtain_results`)
 n_methods <- 10
 

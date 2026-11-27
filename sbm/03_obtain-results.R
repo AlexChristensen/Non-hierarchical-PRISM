@@ -39,7 +39,7 @@ conditions <- expand.grid(
 # Set for unidimensional conditions
 ## Remove WITHIN
 conditions <- conditions[
-  !((conditions$BLOCKS == 1) & (conditions$WITHIN == 0.85)),
+  !((conditions$BLOCKS == 1) & (conditions$WITHIN == 0.95)),
 ]
 ## Remove BETWEEN
 conditions <- conditions[
@@ -52,6 +52,9 @@ conditions <- conditions[
 ## Set BETWEEN and DIFFUSION to zero
 conditions$BETWEEN[conditions$BLOCKS == 1] <- 0
 conditions$DIFFUSION[conditions$BLOCKS == 1] <- 0
+
+# Remove row names
+row.names(conditions) <- NULL
 
 # Number of conditions
 n_conditions <- nrow(conditions)
@@ -83,9 +86,7 @@ for(i in seq_len(n_conditions)){
 
       # Obtain base results
       base_results <- do.call(
-        rbind.data.frame, lapply(x, function(y){
-          obtain_results(y$base, membership, condition_df)
-        })
+        rbind.data.frame, lapply(x$base$data, obtain_results, membership, condition_df)
       )
 
       # Add error
@@ -93,9 +94,7 @@ for(i in seq_len(n_conditions)){
 
       # Obtain error results
       error_results <- do.call(
-        rbind.data.frame, lapply(x, function(y){
-          obtain_results(y$error, membership, condition_df)
-        })
+        rbind.data.frame, lapply(x$error$data, obtain_results, membership, condition_df)
       )
 
       # Add error

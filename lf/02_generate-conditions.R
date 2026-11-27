@@ -40,12 +40,15 @@ conditions <- conditions[
   !((conditions$NFAC == 1) & (conditions$CORF %in% c(0.60))),
 ]
 
+# Remove row names
+row.names(conditions) <- NULL
+
 # Number of conditions
 n_conditions <- nrow(conditions)
 n_digits <- latentFactoR:::digits(n_conditions) - 1
 
 # Loop over results
-for(i in 21){# seq_len(n_conditions)){
+for(i in seq_len(n_conditions)){
 
   # Obtain condition
   condition <- conditions[i,]

@@ -3,50 +3,49 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
 # Load packages
-library(psychNetwoRk); library(EGAnet); library(igraph)
-library(mvtnorm); library(compiler)
+library(psychNetwoRk); library(sbm); library(igraph)
+library(mvtnorm); library(psych); library(GPArotation); library(compiler)
 
 # Recoverable
 recoverable <- function(simulated)
 {
 
   # Check for pseudo Omega
-  if(is.null(simulated$population$Omega_pseudo)){
-    Omega <- simulated$population$Omega
+  if(is(simulated, "pn_pe")){
+    Omega <- simulated$population_error$Omega_pseudo
+    blocks <- simulated$original_results$parameters$blocks
+    membership <- simulated$original_results$parameters$membership
   }else{
-    Omega <- simulated$population$Omega_pseudo
+    Omega <- simulated$parameters$network
+    blocks <- simulated$parameters$blocks
+    membership <- simulated$parameters$membership
   }
 
-  # Estimate memberships
-  R <- simulated$population$R; diag(R) <- 0
-  unidimensional <- community.consensus(R)
-  walktrap <- community.detection(Omega)
-  louvain <- community.consensus(Omega)
-  prism <- community.prism(Omega)
+  # Ensure symmetric
+  Omega <- (Omega + t(Omega)) / 2
 
-  # Return recoverable
-  return(
-    EGAnet:::swiftelse(
-      simulated$parameters$blocks == 1,
-      EGAnet:::unique_length(unidimensional) == 1,
-      any(
-        c(
-          walktrap = ifelse(
-            any(is.na(walktrap)), FALSE,
-            abs(compare(walktrap, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-          ),
-          louvain = ifelse(
-            any(is.na(louvain)), FALSE,
-            abs(compare(louvain, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-          ),
-          prism = ifelse(
-            any(is.na(prism)), FALSE,
-            abs(compare(prism, simulated$population$membership, method = "adjusted.rand") - 1) < 1e-06
-          )
-        )
-      )
+  # Estimate SBM
+  SBM <- estimateSimpleSBM(
+    netMat = Omega, model = "gaussian",
+    directed = FALSE, estimOptions = list(
+      nbCores = 1, verbosity = 0, plot = FALSE,
+      nbBlocksRange = blocks
     )
   )
+
+  # Ensure population communities
+  block_index <- which(SBM$storedModels$nbBlocks == blocks)
+
+  # Check the blocks exists
+  if(length(block_index) == 0){
+    return(FALSE)
+  }
+
+  # Update model
+  SBM$setModel(block_index)
+
+  # Return recoverable
+  return(abs(compare(SBM$memberships, membership, method = "adjusted.rand") - 1) < 1e-06)
 
 }
 
@@ -59,11 +58,11 @@ convergence <- function(simulated)
 
   # Set up logicals
   max_residual <- simulated$population_error$max_error < 0.10
-  max_discrepancy <- max(abs(simulated$population$discrepancy)) < 0.10
+  max_discrepancy <- max(abs(simulated$population_error$discrepancy)) < 0.10
 
   # Unidimensional: CFI is limited by the few degrees of freedom
   # so only the residual and discrepancy criteria are used
-  if(simulated$parameters$blocks == 1){
+  if(simulated$original_results$parameters$blocks == 1){
     return(all(max_residual, max_discrepancy))
   }
 
@@ -78,6 +77,53 @@ convergence <- function(simulated)
 # Compile function
 convergence <- cmpfun(convergence)
 
+# EFA
+efa_fit <- function(R, nfactors, randomStarts = 100L, ...)
+{
+
+  # Estimate EFA on population correlation matrix
+  EFA <- EGAnet:::silent_call(fa(
+    r = R, n.obs = 8e09, nfactors = nfactors,
+    rotate = "none", fm = "ml"
+  ))
+
+  # Check for whether rotation is necessary
+  if(nfactors != 1){
+
+    # Rotate loadings
+    rotated <- GPArotation::geominQ(
+      EFA$loadings, randomStarts = randomStarts, eps = switch(
+        as.character(nfactors),
+        "2" = 0.0001,
+        "3" = 0.001,
+        0.01
+      )
+    )
+
+    # Set up correlations
+    implied_R <- rotated$loadings %*% tcrossprod(rotated$Phi, rotated$loadings)
+
+  }else{
+
+    # Set loadings
+    loadings <- EFA$loadings[,seq_len(nfactors), drop = FALSE]
+
+    # Set up correlations
+    implied_R <- tcrossprod(loadings)
+
+  }
+
+  # Set diagonal to one
+  diag(implied_R) <- 1
+
+  # Return
+  return(implied_R)
+
+}
+
+# Compile function
+efa_fit <- cmpfun(efa_fit)
+
 # Generate condition
 generate_condition <- function(condition)
 {
@@ -85,6 +131,12 @@ generate_condition <- function(condition)
   # Set density matrix
   DM <- matrix(condition$BETWEEN, nrow = condition$BLOCKS, ncol = condition$BLOCKS)
   diag(DM) <- condition$WITHIN
+
+  # Set unidimensional flag
+  unidimensional_flag <- condition$BLOCKS == 1
+
+  # Initialize regeneration counts
+  count_base <- 0; count_error <- 0
 
   # Generate until recoverable
   while(TRUE){
@@ -100,9 +152,17 @@ generate_condition <- function(condition)
       ), silent = TRUE)
 
       # Check if base is recoverable
-      if(!is(simulated_base, "try-error") && recoverable(simulated_base)){
-        break
+      if(!is(simulated_base, "try-error")){
+
+        # Check for unidimensional or recoverable
+        if(unidimensional_flag || recoverable(simulated_base)){
+          break
+        }
+
       }
+
+      # Increase count
+      count_base <- count_base + 1
 
     }
 
@@ -110,60 +170,112 @@ generate_condition <- function(condition)
     target <- 0.97
 
     # Set CFI target
-    if(condition$BLOCKS == 1){
+    if(unidimensional_flag){
 
       # Loop by increasing CFI target
       while(TRUE){
 
+        # Check for target of one
+        if(abs(target - 1) < 1e-06){
+          next
+        }
+
         # Obtain error data
         simulated_error <- try(add_population_error(
-          ggm_object = simulated_base, method = "tkl", metric = "cfi",
-          fit_value = target
+          pn_object = simulated_base, method = "tkl", metric = "cfi",
+          fit_value = target, control = list(decay = 0.10)
         ), silent = TRUE)
 
         # Check if base is recoverable
-        if(is(simulated_error, "try-error") || convergence(simulated_error)){
+        if(!is(simulated_error, "try-error") && convergence(simulated_error)){
           break
         }
+
+        # Increase count
+        count_error <- count_error + 1
 
         # Increase target
         target <- sqrt(target)
 
       }
 
-    }
+    }else{
 
-    # Obtain error data
-    simulated_error <- try(add_population_error(
-      ggm_object = simulated_base, method = "tkl", metric = "cfi",
-      fit_value = target
-    ), silent = TRUE)
+      # Obtain error data
+      simulated_error <- try(add_population_error(
+        pn_object = simulated_base, method = "tkl", metric = "cfi",
+        fit_value = target, control = list(decay = 0.10)
+      ), silent = TRUE)
 
-    # Check if base is recoverable
-    if(!is(simulated_error, "try-error") && convergence(simulated_error) && recoverable(simulated_error)){
-      break
+      # Check if base is recoverable
+      if(
+        !is(simulated_error, "try-error") &&
+        convergence(simulated_error) &&
+        recoverable(simulated_error)
+      ){
+        break
+      }
+
+      # Increase count
+      count_error <- count_error + 1
+
     }
 
   }
 
+  # Obtain EFA fits
+  ## Base
+  efa_base <- efa_fit(
+    R = simulated_base$population_correlation,
+    nfactors = simulated_base$parameters$blocks
+  )
+  ## Error
+  efa_error <- efa_fit(
+    R = simulated_error$population_correlation,
+    nfactors = simulated_base$parameters$blocks
+  )
+
+  # Set degrees of freedom
+  total_variables <- sum(simulated_base$parameters$nodes)
+  df <- (total_variables * (total_variables - 1) / 2) - (total_variables * condition$BLOCKS)
+
+  # Obtain fit indices
+  ## Base
+  efa_base <- latentFactoR::obtain_fit_indices(
+    R_model = efa_base,
+    R = simulated_base$population_correlation,
+    sample_size = Inf,
+    df = df
+  )
+  ## Base
+  efa_error <- latentFactoR::obtain_fit_indices(
+    R_model = efa_error,
+    R = simulated_base$population_correlation,
+    sample_size = Inf,
+    df = df
+  )
+
   # Obtain number of variables
-  n_variables <- length(simulated_base$population$membership)
+  n_variables <- length(simulated_base$parameters$membership)
 
   # Set skew
   skewness <- psychNetwoRk:::runif_xoshiro(n_variables, min = 0, max = 2)
 
   # Obtain Cholesky decomposition
-  cholesky_base <- chol(simulated_base$population$R)
-  cholesky_error <- chol(simulated_error$population$R)
+  cholesky_base <- chol(simulated_base$population_correlation)
+  cholesky_error <- chol(simulated_error$population_correlation)
 
   # Obtain means and Sigma
   means <- rep(0, n_variables); Sigma <- diag(n_variables)
 
+  # Set sample sizes
+  N <- c(500, 1000, 2500, 5000)
+
   # Generate samples
-  samples <- lapply(c(500, 1000, 2500, 5000), function(N){
+  samples <- lapply(N, function(n){
 
     # Generate data
-    data <- rmvnorm(n = N, mean = means, sigma = Sigma)
+    data <- rmvnorm(n = n, mean = means, sigma = Sigma)
 
     # Create correlated data
     data_base <- data %*% cholesky_base
@@ -183,9 +295,23 @@ generate_condition <- function(condition)
 
   })
 
+  # Set up final list
+  result_list <- list()
 
-  # Return data
-  return(samples)
+  # Add samples to conditions
+  simulated_base$data <- structure(lapply(samples, function(x){x$base}), names = N)
+  simulated_base$regenerate <- count_base
+  simulated_base$efa_fit <- efa_base
+  result_list$base <- simulated_base
+  rm(simulated_base)
+  simulated_error$data <- structure(lapply(samples, function(x){x$error}), names = N)
+  simulated_error$regenerate <- count_error
+  simulated_error$efa_fit <- efa_error
+  result_list$error <- simulated_error
+  rm(simulated_error)
+
+  # Return final list
+  return(result_list)
 
 }
 

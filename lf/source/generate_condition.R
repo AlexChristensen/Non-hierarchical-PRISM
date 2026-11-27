@@ -90,10 +90,14 @@ generate_condition <- function(condition)
   factor_sequence <- seq_len(condition$NFAC)
 
   # Number of overlapping cross-loadings to add
-  cross_add <- switch(condition$NVAR, "4" = 1, "8" = 2, "12" = 2)
+  cross_add <- switch(as.character(condition$NVAR), "4" = 1, "8" = 2, "12" = 2)
 
   # Set unidimensional flag
   unidimensional_flag <- condition$NFAC == 1
+
+  # Initialize regeneration counts
+  count_no_overlap <- 0; count_no_overlap_error <- 0
+  count_overlap <- 0; count_overlap_error <- 0
 
   # Loop over communalities
   while(TRUE){
@@ -118,7 +122,11 @@ generate_condition <- function(condition)
 
         # Check if base is recoverable
         if(is(no_overlap, "try-error") || !recoverable(no_overlap)){
+
+          # Increase count
+          count_no_overlap <- count_no_overlap + 1
           next
+
         }
 
         # Set loadings
@@ -171,6 +179,9 @@ generate_condition <- function(condition)
           break
         }
 
+        # Increase count
+        count_overlap <- count_overlap + 1
+
       }
 
     }
@@ -202,6 +213,9 @@ generate_condition <- function(condition)
           break
         }
 
+        # Increase count
+        count_no_overlap_error <- count_no_overlap_error + 1
+
         # Increase target
         target <- sqrt(target)
 
@@ -228,16 +242,20 @@ generate_condition <- function(condition)
         !recoverable(no_overlap_error) ||
         !convergence(no_overlap_error)
       ){
+
+        # Increase count
+        count_no_overlap_error <- count_no_overlap_error + 1
         next
+
       }
 
       # Add error
-      overlap_error <- add_population_error(
+      overlap_error <- try(add_population_error(
         lf_object = overlap, method = "tkl",
         metric = "cfi", fit_value = target,
         leave_cross_loadings = TRUE,
         control = list(decay = 0.10)
-      )
+      ), silent = TRUE)
 
       # Add overlap
       overlap_error$overlap <- TRUE
@@ -250,6 +268,9 @@ generate_condition <- function(condition)
       ){
         break
       }
+
+      # Increase count
+      count_overlap_error <- count_overlap_error + 1
 
     }
 
@@ -332,18 +353,22 @@ generate_condition <- function(condition)
 
   # Add samples to conditions
   no_overlap$data <- structure(lapply(samples, function(x){x$no_overlap}), names = N)
+  no_overlap$regenerate <- count_no_overlap
   result_list$no_overlap <- no_overlap
   rm(no_overlap)
   no_overlap_error$data <- structure(lapply(samples, function(x){x$no_overlap_error}), names = N)
+  no_overlap_error$regenerate <- count_no_overlap_error
   result_list$no_overlap_error <- no_overlap_error
   rm(no_overlap_error)
 
   # Check for unidimensional
   if(!unidimensional_flag){
     overlap$data <- structure(lapply(samples, function(x){x$overlap}), names = N)
+    overlap$regenerate <- count_overlap
     result_list$overlap <- overlap
     rm(overlap)
     overlap_error$data <- structure(lapply(samples, function(x){x$overlap_error}), names = N)
+    overlap_error$regenerate <- count_overlap_error
     result_list$overlap_error <- overlap_error
     rm(overlap_error)
   }
