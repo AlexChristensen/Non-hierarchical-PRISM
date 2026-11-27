@@ -77,6 +77,15 @@ convergence <- function(simulated)
 # Compile function
 convergence <- cmpfun(convergence)
 
+# Saturated network
+saturated_network <- function(network)
+{
+  return(all(network[lower.tri(network)] != 0))
+}
+
+# Compile function
+saturated_network <- cmpfun(saturated_network)
+
 # EFA
 efa_fit <- function(R, nfactors, randomStarts = 100L, ...)
 {
@@ -154,9 +163,21 @@ generate_condition <- function(condition)
       # Check if base is recoverable
       if(!is(simulated_base, "try-error")){
 
-        # Check for unidimensional or recoverable
-        if(unidimensional_flag || recoverable(simulated_base)){
-          break
+        # Check for unidimensional
+        if(unidimensional_flag){
+
+          # Check for saturated network
+          if(!saturated_network(simulated_base$parameters$network)){
+            break
+          }
+
+        }else{
+
+          # Check for unidimensional or recoverable
+          if(recoverable(simulated_base)){
+            break
+          }
+
         }
 
       }
@@ -175,10 +196,8 @@ generate_condition <- function(condition)
       # Loop by increasing CFI target
       while(TRUE){
 
-        # Check for target of one
-        if(abs(target - 1) < 1e-06){
-          next
-        }
+        # Target check
+        target_flag <- abs(target - 1) < 1e-06
 
         # Obtain error data
         simulated_error <- try(add_population_error(
@@ -187,7 +206,11 @@ generate_condition <- function(condition)
         ), silent = TRUE)
 
         # Check if base is recoverable
-        if(!is(simulated_error, "try-error") && convergence(simulated_error)){
+        if(
+          target_flag ||
+          !is(simulated_error, "try-error") &&
+          convergence(simulated_error)
+        ){
           break
         }
 
@@ -198,6 +221,9 @@ generate_condition <- function(condition)
         target <- sqrt(target)
 
       }
+
+      # Check for outer loop break
+      if(target_flag) next else break
 
     }else{
 
@@ -227,17 +253,20 @@ generate_condition <- function(condition)
   ## Base
   efa_base <- efa_fit(
     R = simulated_base$population_correlation,
-    nfactors = simulated_base$parameters$blocks
+    nfactors = condition$BLOCKS
   )
   ## Error
   efa_error <- efa_fit(
     R = simulated_error$population_correlation,
-    nfactors = simulated_base$parameters$blocks
+    nfactors = condition$BLOCKS
   )
 
   # Set degrees of freedom
   total_variables <- sum(simulated_base$parameters$nodes)
-  df <- (total_variables * (total_variables - 1) / 2) - (total_variables * condition$BLOCKS)
+  variable_parameters <- total_variables * (total_variables - 1) / 2
+  factor_parameters <- condition$BLOCKS * (condition$BLOCKS - 1) / 2
+  loading_parameters <- total_variables * condition$BLOCKS
+  df <- variable_parameters - loading_parameters + factor_parameters
 
   # Obtain fit indices
   ## Base
@@ -250,7 +279,7 @@ generate_condition <- function(condition)
   ## Base
   efa_error <- latentFactoR::obtain_fit_indices(
     R_model = efa_error,
-    R = simulated_base$population_correlation,
+    R = simulated_error$population_correlation,
     sample_size = Inf,
     df = df
   )

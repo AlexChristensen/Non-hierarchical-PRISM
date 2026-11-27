@@ -112,6 +112,9 @@ generate_condition <- function(condition)
         correlations = condition$CORF, sample_size = 1
       ), silent = TRUE)
 
+      # Set error flag
+      error_flag <- is(no_overlap, "try-error")
+
       # Add overlap
       no_overlap$overlap <- FALSE
 
@@ -121,7 +124,7 @@ generate_condition <- function(condition)
       }else{
 
         # Check if base is recoverable
-        if(is(no_overlap, "try-error") || !recoverable(no_overlap)){
+        if(error_flag || !recoverable(no_overlap)){
 
           # Increase count
           count_no_overlap <- count_no_overlap + 1
@@ -171,11 +174,14 @@ generate_condition <- function(condition)
           correlations = condition$CORF, sample_size = 1
         ), silent = TRUE)
 
+        # Set error flag
+        error_flag <- is(overlap, "try-error")
+
         # Add overlap
         overlap$overlap <- TRUE
 
         # Check if base is recoverable
-        if(!is(overlap, "try-error") && recoverable(overlap)){
+        if(!error_flag && recoverable(overlap)){
           break
         }
 
@@ -195,6 +201,9 @@ generate_condition <- function(condition)
       # Loop by increasing CFI target
       while(TRUE){
 
+        # Target check
+        target_flag <- abs(target - 1) < 1e-06
+
         # Obtain error data
         no_overlap_error <- try(add_population_error(
           lf_object = no_overlap, method = "tkl",
@@ -202,12 +211,16 @@ generate_condition <- function(condition)
           control = list(decay = 0.10)
         ), silent = TRUE)
 
+        # Set error flag
+        error_flag <- is(no_overlap_error, "try-error")
+
         # Add overlap
         no_overlap_error$overlap <- FALSE
 
         # Check if base is recoverable
         if(
-          !is(no_overlap_error, "try-error") &&
+          target_flag ||
+          !error_flag &&
           convergence(no_overlap_error)
         ){
           break
@@ -221,8 +234,8 @@ generate_condition <- function(condition)
 
       }
 
-      # Break out of main loop
-      break
+      # Check for outer loop break
+      if(target_flag) next else break
 
     }else{
 
@@ -233,12 +246,15 @@ generate_condition <- function(condition)
         control = list(decay = 0.10)
       ), silent = TRUE)
 
+      # Set error flag
+      error_flag <- is(no_overlap_error, "try-error")
+
       # Add overlap
       no_overlap_error$overlap <- FALSE
 
       # Check if base is recoverable
       if(
-        is(no_overlap_error, "try-error") ||
+        error_flag ||
         !recoverable(no_overlap_error) ||
         !convergence(no_overlap_error)
       ){
@@ -257,12 +273,15 @@ generate_condition <- function(condition)
         control = list(decay = 0.10)
       ), silent = TRUE)
 
+      # Set error flag
+      error_flag <- is(overlap_error, "try-error")
+
       # Add overlap
       overlap_error$overlap <- TRUE
 
       # Check if base is recoverable
       if(
-        !is(overlap_error, "try-error") &&
+        !error_flag &&
         recoverable(overlap_error) &&
         convergence(overlap_error)
       ){

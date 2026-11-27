@@ -39,7 +39,7 @@ conditions <- expand.grid(
 # Set for unidimensional conditions
 ## Remove WITHIN
 conditions <- conditions[
-  !((conditions$BLOCKS == 1) & (conditions$WITHIN == 0.95)),
+  !((conditions$BLOCKS == 1) & (conditions$WITHIN == 0.85)),
 ]
 ## Remove BETWEEN
 conditions <- conditions[
